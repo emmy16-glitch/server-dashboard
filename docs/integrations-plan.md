@@ -118,3 +118,48 @@ Proot/Termux: no Docker-gated features in v1, no `better-sqlite3`/`node-pty`/Pla
 - Phase 4 += `body-json/tcp/ssl/disk/mem` checks; `browser` interface only.
 - Phase 5 += incident memory + MCP manifest + grounded lookup.
 - Phase 6 unchanged (agents), now also serving MCP tools remotely.
+
+---
+
+## Addendum — 5 agent repos + 30 MCP servers triage
+
+Note: links arrived truncated (`github.com/...…`), so IDs below are best-effort by name + description. Verdicts are by **pattern value**, not by vendoring code.
+
+### The 5 agent repos
+
+| Repo (as described) | Verdict | Why |
+|---|---|---|
+| Agency Agents (AI teams) | **Borrow pattern** | Monitor-agent + fixer-agent + verifier-agent split maps to our Explain→Propose→Execute + health-gate. No framework dep; just role prompts over our existing tools. |
+| Agent-Reach (web research) | **Integrate (already planned)** | Powers `search_docs` grounded lookup. Allowlisted fetch, quoted untrusted context. See §7 above. |
+| Orca (stablyai — couldn't resolve full repo, treat as agent runtime) | **Skip runtime, watch interface** | If it's a runtime/harness, we still shell to user CLIs instead of bundling. Only adopt if it exposes a clean tool protocol. |
+| OpenMontage (video production) | **Skip / template-only** | Video pipeline is off-mission for an ops plane. Hostable via dashboard later as a job-type template at most. |
+| Codebase Memory MCP (codebase memory) | **Borrow pattern (high value)** | Code-aware diagnosis: index project files (paths + exports + recent diffs) so `ai-ask` can answer "which file broke /health". v1 = `inspect_package` + git diff + file list (no embeddings); semantic index later. |
+
+### The 30 MCP servers — what we consume vs serve
+
+We **serve** our own tools (see `docs/mcp-tools.md`). We **consume** external MCP servers only where they beat a 20-line fetch:
+
+**Consume (Phase 5, optional, behind provider interface):**
+- `GitHub` — repo/issue/PR lookup for diagnosis + deploy metadata. Replaces hand-rolled git-host calls.
+- `Sentry` — incident enrichment (real stack traces instead of guessing from log tails). Highest debugging ROI on the list.
+- `Context7` — fresh library docs for dependency errors. Feeds grounded lookup.
+- `Fetch` — the allowlisted web-fetch primitive itself.
+- `Filesystem (scoped)` — reference for our cwd-jail rules; we implement our own narrower version, never mount `/`.
+- `SQLite` (+ Postgres Toolbox pattern) — query layer the day we migrate history off JSON.
+- `Knowledge Graph Memory / Graphiti / cognee (pattern only)` — validates our `memory/*.json` shape; no graph DB in v1.
+- `Brave Search` — optional alternative to Agent-Reach for `search_docs`.
+- `Todoist / Google Workspace / Thunderbird (pattern)` — incident → task escalation later, low priority.
+- `Playwright / Chrome DevTools (Phase 4+, interface only)` — synthetic browser checks on a bigger host, never Proot v1.
+
+**Skip:** Maps, World Monitor, Drive, Obsidian, Blender, Figma, Phoenix, Zotero, NotebookLM, Finance Toolkit, Financial Datasets, Stripe — wrong domain (maps/media/research/finance) or duplicates notifier work.
+
+**Caution carried over from your note:** several `modelcontextprotocol/*` reference servers are archived — pin versions, check maintenance, treat as patterns first, processes second.
+
+### Deltas from this addendum
+```text
++ docs/mcp-tools.md (our served tools + consumed externals matrix)
++ server/core/code-index.js (Codebase Memory pattern: file list + exports + diffs for ai-ask)
++ server/integrations/mcp-clients/{github,sentry,context7,fetch,brave}.js (Phase 5, lazy-loaded)
+~ server/integrations/ai/* (role prompts: monitor / fixer / verifier, Agency pattern)
+~ docs/security.md (MCP client SSRF + token scopes; Sentry token read-only; FS scope deny-by-default)
+```

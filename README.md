@@ -136,8 +136,8 @@ docs/security.md
 docs/api-v1.md
 docs/registry-schema.md
 docs/threat-model.md
-docs/integrations-plan.md
-docs/mcp-tools.md (phase 5)
+docs/integrations-plan.md (now incl. 5 agent repos + 30 MCP servers triage)
+docs/mcp-tools.md (tools we serve + externals we consume)
 templates/ (phase 3)
 memory/ (phase 5, runtime, gitignored)
 server/  (phase 2+)
