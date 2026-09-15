@@ -174,22 +174,37 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const dep = await api.get<{ deployments: DeploymentRecord[] }>("/api/deploy");
       if (dead) return;
       if (reg?.projects?.length) {
+        // Server registry is source of truth: replace list, keep local
+        // display details (description/tags/history) where ids match.
+        const list = reg.projects;
         setProjects((prev) => {
           const byId = new Map(prev.map((p) => [p.id, p]));
-          const merged = reg.projects.map((rp) => {
-            const local = byId.get((rp as Project).id);
-            const s = st?.[(rp as Project).id];
-            const base = (local || rp) as Project;
+          return list.map((rp) => {
+            const r = rp as unknown as Project;
+            const local = byId.get(r.id);
+            const s = st?.[r.id];
             return {
-              ...base,
-              ...(rp as object),
-              ...(s ? { status: s.status, currentLatency: s.latencyMs, uptime24h: s.uptime24h, lastChecked: s.checkedAt || base.lastChecked } : {}),
-              process: base.process ? { ...base.process, ...(s ? { restarts: s.restarts } : {}) } : base.process,
+              id: r.id,
+              name: r.name || r.id,
+              description: local?.description || "",
+              enabled: (r as { enabled?: boolean }).enabled !== false,
+              status: s?.status || (r as { status?: Project["status"] }).status || local?.status || "STARTING",
+              template: (r as { template?: string }).template || local?.template,
+              tags: local?.tags || [],
+              location: r.location || local?.location || { type: "external", agentId: "local" },
+              runtime: { ...(local?.runtime || {}), ...(r.runtime || {}) },
+              monitoring: r.monitoring || local?.monitoring || { intervalSeconds: 60, timeoutSeconds: 10, expectedStatus: [200] },
+              source: (r as { source?: Project["source"] }).source || local?.source,
+              process: local?.process,
+              history: local?.history || [],
+              uptime24h: s?.uptime24h ?? (r as { uptime24h?: number }).uptime24h ?? local?.uptime24h ?? 100,
+              uptime7d: local?.uptime7d ?? 100,
+              uptime30d: local?.uptime30d ?? 100,
+              currentLatency: s?.latencyMs ?? (r as { currentLatency?: number }).currentLatency ?? local?.currentLatency ?? 0,
+              lastChecked: s?.checkedAt || local?.lastChecked || "just now",
+              hasIncident: local?.hasIncident || false,
             } as Project;
           });
-          // keep any local-only projects not yet in registry
-          prev.forEach((p) => { if (!merged.find((m) => m.id === p.id)) merged.push(p); });
-          return merged;
         });
       } else if (st) {
         setProjects((prev) => prev.map((p) => {
