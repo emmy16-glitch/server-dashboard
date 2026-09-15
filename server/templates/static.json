@@ -1,0 +1,15 @@
+{
+  "name": "static",
+  "detect": [
+    "index.html"
+  ],
+  "install": null,
+  "build": null,
+  "start": [
+    "python3",
+    "-m",
+    "http.server"
+  ],
+  "healthPath": "/",
+  "port": 8080
+}

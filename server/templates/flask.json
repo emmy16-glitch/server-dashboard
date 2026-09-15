@@ -1,0 +1,15 @@
+{
+  "name": "flask",
+  "detect": [
+    "requirements.txt",
+    "app.py"
+  ],
+  "install": "pip install -r requirements.txt",
+  "build": null,
+  "start": [
+    "python3",
+    "app.py"
+  ],
+  "healthPath": "/health",
+  "port": 5000
+}

@@ -1,0 +1,17 @@
+{
+  "name": "fastapi",
+  "detect": [
+    "requirements.txt",
+    "main.py"
+  ],
+  "install": "pip install -r requirements.txt",
+  "build": null,
+  "start": [
+    "python3",
+    "-m",
+    "uvicorn",
+    "main:app"
+  ],
+  "healthPath": "/health",
+  "port": 8000
+}

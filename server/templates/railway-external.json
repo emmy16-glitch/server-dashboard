@@ -1,0 +1,9 @@
+{
+  "name": "railway-external",
+  "detect": [
+    "railway.json"
+  ],
+  "start": "external",
+  "healthPath": "/healthz",
+  "notes": "Monitor only. Control in Railway dashboard."
+}

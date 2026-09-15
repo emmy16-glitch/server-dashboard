@@ -1,0 +1,15 @@
+{
+  "name": "node-api",
+  "detect": [
+    "package.json"
+  ],
+  "install": "npm ci",
+  "build": "npm run build",
+  "start": [
+    "npm",
+    "run",
+    "start"
+  ],
+  "healthPath": "/health",
+  "port": 8000
+}

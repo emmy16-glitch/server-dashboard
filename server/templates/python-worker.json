@@ -1,0 +1,15 @@
+{
+  "name": "python-worker",
+  "detect": [
+    "worker.py",
+    "requirements.txt"
+  ],
+  "install": "pip install -r requirements.txt",
+  "build": null,
+  "start": [
+    "python3",
+    "worker.py"
+  ],
+  "healthPath": "/health",
+  "port": 8055
+}

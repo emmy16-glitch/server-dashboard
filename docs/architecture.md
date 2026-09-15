@@ -8,34 +8,28 @@ Single-node-first control plane that can grow into multi-server without rewrite.
 ```text
 server/
   index.js               # http server :3001, routing, auth gate, SSE
-  api/
-    projects.js          # CRUD registry
-    status.js            # latest + history
-    process.js           # start/stop/restart (local only)
-    deployments.js       # git pull/build/verify/rollback
-    incidents.js         # open/ack/resolve/notes
-    terminal.js          # POST /exec (safe mode)
-    ai.js                # POST /ai-ask (tool-gated)
-    settings.js          # AI CLI choice, alert channels, tokens
+  package.json
   core/
-    project-registry.js  # load/validate projects.json, stable id
-    process-manager.js   # spawn/kill, pid file, lock, restart policy, backoff
-    health-monitor.js    # 30s loop, timeout 10s, classify UP/DEGRADED/DOWN
-    deployment-manager.js# git ops, hooks, health gate, rollback pointer
-    incident-manager.js  # dedupe, timeline, auto-resolve, maintenance
-    notifier.js          # channel abstraction (telegram/discord/email/webhook/slack)
-    audit.js             # append-only audit.json
-    resources.js         # /proc cpu/mem/disk per pid + host
-  integrations/
-    ai/{opencode,codex,claude}.js   # uniform { diagnose(context) } wrapper
-    github.js            # sha/branch/diff (git CLI in v1, API later)
-    vercel.js            # deep links now, API trigger later
-    telegram.js discord.js
+    store.js             # JSON read/write + timestamped backups (keep 20)
+    auth.js              # Bearer (hashed, rotatable) + sessions + share token
+    monitor.js           # per-project interval checks, UP/DEGRADED/DOWN, history
+    incidents.js         # auto-open on 3 fails, auto-resolve, dedupe, timeline
+    notifier.js          # telegram -> discord -> email -> webhook -> slack
+    process.js           # spawn/kill cwd-jailed, locks, pid probe, /proc stats
+    logs.js              # tail/cap/rotation/redaction
+    retrieval.js         # keyword log spans for AI grounding
+    memory.js            # memory/<project>.json runbook + past fixes
+    audit.js             # append-only audit log
+  templates/             # 11 templates (dev + external) + autodetect endpoint
   storage/
-    projects.json deployments.json incidents.json status-history.json audit.json
-    (.sqlite later — same access functions, swapped backend)
-public/
-  index.html app.js styles.css   # static, fetch + SSE, no build
+    projects.json        # THE registry (tracked). Rest is runtime (gitignored):
+                         # settings/sessions/history/incidents/deployments/audit
+  memory/                # runtime incident memory (gitignored)
+  logs/ locks/ backups/  # runtime (gitignored)
+  public/                # web/ build output (gitignored, served statically)
+web/                     # premium UI (Vite 7 + React 19 + Tailwind, singlefile)
+  src/context/DashboardContext.tsx  # store + 30s server sync, mock fallback
+  src/lib/api.ts                    # token client
 logs/<projectId>.log
 ```
 

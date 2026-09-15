@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "id": "local",
+      "hostname": "pixel-server",
+      "platform": "android/proot"
+    }
+  ],
+  "projects": [
+    {
+      "id": "agentdesk",
+      "name": "AgentDesk",
+      "enabled": true,
+      "location": {
+        "type": "external",
+        "agentId": "local",
+        "provider": "vercel"
+      },
+      "runtime": {
+        "healthUrl": "https://agentdesk-bnb-eight.vercel.app",
+        "autoRestart": false
+      },
+      "source": {
+        "provider": "github",
+        "repository": "emmy16-glitch/AgentDesk",
+        "branch": "main",
+        "deployOnPush": true
+      },
+      "monitoring": {
+        "intervalSeconds": 60,
+        "timeoutSeconds": 10,
+        "expectedStatus": [
+          200
+        ]
+      },
+      "notifications": {
+        "down": true,
+        "recovered": true
+      },
+      "template": "vercel-external"
+    },
+    {
+      "id": "alphaarena",
+      "name": "AlphaArena",
+      "enabled": true,
+      "location": {
+        "type": "external",
+        "agentId": "local",
+        "provider": "vercel"
+      },
+      "runtime": {
+        "healthUrl": "https://alphaarena-sand.vercel.app",
+        "autoRestart": false
+      },
+      "source": {
+        "provider": "github",
+        "repository": "emmy16-glitch/AlphaArena",
+        "branch": "main",
+        "deployOnPush": true
+      },
+      "monitoring": {
+        "intervalSeconds": 60,
+        "timeoutSeconds": 10,
+        "expectedStatus": [
+          200
+        ]
+      },
+      "notifications": {
+        "down": true,
+        "recovered": true
+      },
+      "template": "vercel-external"
+    },
+    {
+      "id": "auctorail",
+      "name": "Auctorail",
+      "enabled": true,
+      "location": {
+        "type": "external",
+        "agentId": "local",
+        "provider": "vercel"
+      },
+      "runtime": {
+        "healthUrl": "https://auctorail.vercel.app/",
+        "autoRestart": false
+      },
+      "source": {
+        "provider": "github",
+        "repository": "emmy16-glitch/auctorail",
+        "branch": "main",
+        "deployOnPush": true
+      },
+      "monitoring": {
+        "intervalSeconds": 60,
+        "timeoutSeconds": 10,
+        "expectedStatus": [
+          200
+        ]
+      },
+      "notifications": {
+        "down": true,
+        "recovered": true
+      },
+      "template": "vercel-external"
+    },
+    {
+      "id": "echoo",
+      "name": "Echoo",
+      "enabled": true,
+      "location": {
+        "type": "external",
+        "agentId": "local",
+        "provider": "vercel"
+      },
+      "runtime": {
+        "healthUrl": "https://echoo.digi02.org/",
+        "autoRestart": false
+      },
+      "source": {
+        "provider": "github",
+        "repository": "emmy16-glitch/Echoo-main",
+        "branch": "main",
+        "deployOnPush": true
+      },
+      "monitoring": {
+        "intervalSeconds": 60,
+        "timeoutSeconds": 10,
+        "expectedStatus": [
+          200
+        ]
+      },
+      "notifications": {
+        "down": true,
+        "recovered": true
+      },
+      "template": "vercel-external"
+    }
+  ]
+}

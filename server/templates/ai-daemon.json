@@ -1,0 +1,14 @@
+{
+  "name": "ai-daemon",
+  "detect": [
+    "Modelfile"
+  ],
+  "install": null,
+  "build": null,
+  "start": [
+    "ollama",
+    "serve"
+  ],
+  "healthPath": "/api/tags",
+  "port": 11434
+}

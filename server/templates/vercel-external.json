@@ -1,0 +1,9 @@
+{
+  "name": "vercel-external",
+  "detect": [
+    "vercel.json"
+  ],
+  "start": "external",
+  "healthPath": "/",
+  "notes": "Monitor only. Control in Vercel dashboard; redeploy via Deploy Hook."
+}

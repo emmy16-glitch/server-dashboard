@@ -1,0 +1,16 @@
+{
+  "name": "nextjs",
+  "detect": [
+    "next.config.js",
+    "package.json"
+  ],
+  "install": "npm ci",
+  "build": "npm run build",
+  "start": [
+    "npm",
+    "run",
+    "start"
+  ],
+  "healthPath": "/",
+  "port": 3000
+}

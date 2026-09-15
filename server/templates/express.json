@@ -1,0 +1,14 @@
+{
+  "name": "express",
+  "detect": [
+    "package.json"
+  ],
+  "install": "npm ci",
+  "build": null,
+  "start": [
+    "node",
+    "server.js"
+  ],
+  "healthPath": "/health",
+  "port": 3000
+}

@@ -5,3 +5,20 @@ logs/
 status.json
 .env
 .DS_Store
+
+# server-dashboard runtime data (local only, never commit)
+server/logs/
+server/locks/
+server/memory/
+server/public/
+server/storage/settings.json
+server/storage/sessions.json
+server/storage/status-history.json
+server/storage/incidents.json
+server/storage/deployments.json
+server/storage/audit.json
+server/storage/agents-remote.json
+server/storage/backups/
+web/dist/
+web/.vite/
+web/tsconfig.tsbuildinfo

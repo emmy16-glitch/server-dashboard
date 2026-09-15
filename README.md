@@ -146,4 +146,11 @@ public/  (phase 2+)
 
 ## Status
 
-Planning — this README + `docs/` is the contract. No runtime code yet. Next: implement Phase 1 MVP.
+Implemented (2026-09-15): premium UI in `web/` (Tailwind, single-file build to
+`server/public/`), real backend in `server/` (stdlib-only Node :3001) —
+registry CRUD, Bearer auth + sessions + read-only share, HTTP health monitor
+with history, log tail + SSE, safe exec, incident auto-open/resolve + Telegram/
+Discord notifier, Vercel deploy-hook triggers + deep-links, 11 templates +
+autodetect, grounded AI ask + incident memory + confirm-gated MCP tools, agents
+seam. Registry currently tracks 4 live Vercel externals (AgentDesk, AlphaArena,
+Auctorail, Echoo). Run: `node server/index.js` + `npm --prefix web run dev`.
