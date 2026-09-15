@@ -13,6 +13,7 @@ import {
   Tv,
   Share2,
   Key,
+  LogOut,
   Layers,
   Sparkles,
   ChevronDown,
@@ -40,6 +41,7 @@ export const DesignBar: React.FC = () => {
     isReadOnlyMode,
     setIsReadOnlyMode,
     authToken,
+    logout,
     rotateAuthToken,
     playHapticAudio,
   } = useDashboard();
@@ -151,10 +153,17 @@ export const DesignBar: React.FC = () => {
             <span className="hidden sm:inline">{isReadOnlyMode ? 'Read-Only Active' : 'Share View'}</span>
           </button>
 
-          {/* Auth Token Indicator */}
+          {/* Auth Token Indicator + Sign out */}
           <div className="flex items-center gap-1 font-mono text-[11px] opacity-75">
             <Key className="w-3 h-3" />
-            <span className="hidden md:inline">{authToken.slice(0, 11)}...</span>
+            <span className="hidden md:inline">{authToken ? `${authToken.slice(0, 11)}...` : 'demo mode'}</span>
+            <button
+              onClick={() => logout()}
+              title="Sign out (clears stored token)"
+              className="ml-1 px-1.5 py-0.5 rounded hover:bg-black/20 dark:hover:bg-white/20 font-sans font-semibold"
+            >
+              <LogOut className="w-3 h-3" />
+            </button>
           </div>
         </div>
       </div>

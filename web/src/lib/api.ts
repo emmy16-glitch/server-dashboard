@@ -25,6 +25,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T | null> {
 
 export const api = {
   get: req,
+  getToken,
+  setToken,
   async login(token: string): Promise<boolean> {
     try {
       const r = await fetch("/api/auth/login", {

@@ -53,6 +53,10 @@ interface DashboardContextType {
   isReadOnlyMode: boolean;
   setIsReadOnlyMode: (ro: boolean) => void;
   authToken: string;
+  authed: boolean;
+  login: (token: string) => Promise<boolean>;
+  logout: () => void;
+  enterDemo: () => void;
   rotateAuthToken: () => void;
 
   // Actions
@@ -98,8 +102,28 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isReadOnlyMode, setIsReadOnlyMode] = useState<boolean>(false);
-  const [authToken, setAuthToken] = useState<string>('srv_tok_991fa8e2003c41');
+  const [authToken, setAuthToken] = useState<string>(() => api.getToken());
+  const [authed, setAuthed] = useState<boolean>(() => !!api.getToken());
   const [lastSyncTime, setLastSyncTime] = useState<string>('Just now');
+
+  const login = useCallback(async (token: string) => {
+    const ok = await api.login(token.trim());
+    if (ok) {
+      setAuthToken(token.trim());
+      setAuthed(true);
+    }
+    return ok;
+  }, []);
+
+  const logout = useCallback(() => {
+    api.setToken("");
+    setAuthToken("");
+    setAuthed(false);
+  }, []);
+
+  const enterDemo = useCallback(() => {
+    setAuthed(true); // no token: all server calls fall back to local mock
+  }, []);
 
   const activeProject = projects.find((p) => p.id === activeProjectId) || null;
 
@@ -364,8 +388,16 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const rotateAuthToken = () => {
+  const rotateAuthToken = async () => {
     playHapticAudio('click');
+    // Server rotation first (invalidates old token everywhere)
+    const fresh = await api.get<{ token: string }>("/api/auth/rotate", { method: "POST" });
+    if (fresh?.token) {
+      api.setToken(fresh.token);
+      setAuthToken(fresh.token);
+      addAuditEntry('bearer_token', 'local', 'exec_command', 'Rotated dashboard auth bearer token (server)');
+      return;
+    }
     const newTok = 'srv_tok_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 6);
     setAuthToken(newTok);
     addAuditEntry('bearer_token', 'local', 'exec_command', 'Rotated dashboard auth bearer token');
@@ -940,6 +972,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isReadOnlyMode,
         setIsReadOnlyMode,
         authToken,
+        authed,
+        login,
+        logout,
+        enterDemo,
         rotateAuthToken,
         startProject,
         stopProject,

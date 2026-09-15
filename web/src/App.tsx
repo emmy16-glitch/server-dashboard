@@ -14,6 +14,7 @@ import { AuditLogModal } from './components/audit/AuditLogModal';
 import { ProjectDetailModal } from './components/drawer/ProjectDetailModal';
 import { AddProjectModal } from './components/modals/AddProjectModal';
 import { McpInspectorModal } from './components/mcp/McpInspectorModal';
+import { LoginScreen } from './components/LoginScreen';
 import { Project } from './types/dashboard';
 import {
   Server,
@@ -21,8 +22,10 @@ import {
 } from 'lucide-react';
 
 const DashboardContent: React.FC = () => {
-  const { design } = useDashboard();
+  const { design, authed } = useDashboard();
   const theme = getThemeClasses(design);
+
+  if (!authed) return <LoginScreen />;
 
   const [currentTab, setCurrentTab] = useState<string>('projects');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
