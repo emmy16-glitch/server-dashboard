@@ -1,118 +1,143 @@
-# server-dashboard
+# server-dashboard — personal self-hosting control plane
 
-One page to see if all your projects are alive — whether they run on this server or on Vercel / any other host — and fix them from the same place with a terminal + AI helper.
+> **One secure control plane for monitoring, deploying, debugging, and recovering all your applications — regardless of where they run.**
 
-## The problem
+Monitor local processes on this server + Vercel / Railway / Render URLs from one page. Start/stop/restart, deploy via git, tail logs, open a scoped terminal, and ask AI why something is down — without SSH-ing around.
 
-Projects are started manually (`npm start`, `node server.js`, `python app.py`) with no process manager. When one crashes, hangs, or starts returning 404/500, nobody notices until someone opens the URL. There is no central list of what's supposed to be up, where it runs, or what its logs said.
+Inspired by UptimeRobot (monitoring) + PM2 (processes) + Vercel (deploys) + Portainer (ops UI) + Grafana/Loki (history/logs) + GitHub Actions (deploy pipeline) + a safe AI assistant.
 
-## What we want
+## Why this exists
 
-A lightweight dashboard, itself hosted on this server, that:
+- Projects run manually (`npm start`, `node server.js`, `python app.py`) with no supervisor. A crash or 404/500 goes unnoticed.
+- Projects live in different places: this box (`/root/projects`, `/root/Software_projects/echoo`), Vercel, other hosts. No single list of "what should be up".
+- Debugging means: find the folder, remember the port, re-run, scroll logs, guess. We want: open dashboard → red card → logs → terminal → AI diagnosis → restart/deploy → green.
 
-1. **Monitors everything** — local ports + external URLs — and shows GREEN / RED at a glance with latency and last-check time.
-2. **Hosts easily** — add a folder + start command + port from the UI and it runs on the server. Or paste a Vercel URL and just monitor it, no local process.
-3. **Controls processes** — Start / Stop / Restart from the browser (a tiny PM2 replacement, no Docker needed).
-4. **Shows logs** — tail of stdout/stderr per project so a 404/500 can be inspected immediately.
-5. **Has a terminal in the browser** — run commands scoped to that project's folder (`npm install`, `ls`, `cat`, `git pull`).
-6. **Has an AI helper** — click "Ask AI why down" and it sends status + recent logs + `package.json` snippet to whatever AI CLI you have installed (`opencode`, `codex`, `claude`) and streams the diagnosis back. You can install/swap any AI, the dashboard just shells out to it.
+## What v1 does (MVP scope)
 
-## How it works (architecture)
+1. **Registry** — one `projects.json`: local (we run it) or external (we only ping it).
+2. **Health monitoring** — HTTP checks every 30s → `UP / DEGRADED / DOWN / STARTING / STOPPED` + latency + uptime %.
+3. **Process control** — Start / Stop / Restart local Node/Python apps (tiny PM2 replacement, no Docker).
+4. **Log viewer** — tail `logs/<id>.log`, rotation + cap.
+5. **Auth from day one** — token login; control APIs never public. Monitoring cards can be shared read-only.
+6. **Deploy button (local git)** — `git pull → npm install → build → restart → health-verify → rollback on fail`, with deployment record.
+7. **Scoped terminal (safe mode)** — run approved commands in the project's `cwd` with timeout, output cap, audit log. No full PTY in v1.
+8. **AI helper (Explain → Propose → Execute)** — structured diagnosis from status+logs, suggests commands, executes only approved safe tools with audit.
+
+Post-v1: incidents, Telegram/Discord alerts, SSL/disk/memory checks, multi-server agents, templates.
+
+See `docs/` for details: `architecture.md`, `api-v1.md`, `registry-schema.md`, `security.md`, `threat-model.md`.
+
+## Quick mental model
 
 ```
-Browser (public/index.html)
-   |  fetch / ws (poll every ~15s)
-   v
-server.js (Node, plain http, :3001)
-   |-- projects.json  (registry: source of truth)
-   |-- monitor.js     (loop: fetch each url, write status.json)
-   |-- runner.js      (spawn/kill node/python, pipe to logs/*.log, track pids)
-   |-- logs/          (per-project stdout/stderr)
-   |-- /api/exec      (scoped command execution for web terminal)
-   `-- /api/ai-ask    (builds prompt from status+logs, shells to AI CLI)
++------------------+      poll 30s      +-------------------+
+|  Dashboard UI    | <----------------> | server.js (:3001) |
+|  cards, logs,    |  REST + SSE        |  api/ + core/     |
+|  terminal, AI    |                    +--------+----------+
++------------------+                             |
+        | read-only share link (optional)        | spawn / fetch / git / AI CLI
+        v                                        v
+  public status page                  +---------+----------+
+                                      | projects | logs | status |
+                                      | deploys  | incidents | audit |
+                                      +---------+----------+
+                                      file JSON in v1 → SQLite when history grows
 ```
 
-- **Registry, not autodiscovery.** `projects.json` lists what *should* be up. Each entry is either `local` (we manage the process) or `external` (we only ping the URL).
-- **Monitor loop.** Every 30s: `fetch(url, timeout 10s)` → classify → append to history. No agents to install on projects.
-- **Runner.** `child_process.spawn` with `cwd` set to the project dir. PID stored in `.pids.json`. Output appended to `logs/<name>.log` (capped, e.g. last 2000 lines). Restart = kill + spawn.
-- **UI.** Static HTML, no build step. Cards poll `/api/status`. Works on phones.
-- **Dashboard hosting.** Runs as `node server.js` on `:3001`. Exposed via tunnel (ngrok / Cloudflare) since this host has no public IP / reverse proxy.
+- **Registry, not autodiscovery.** If it's not in `projects.json`, it's not monitored.
+- **Local vs external:**
+  - `local`: we `spawn` it, we ping `http://localhost:PORT/health`, we own logs + restarts + deploys.
+  - `external` (vercel/railway/render/other): we only ping the URL + track uptime. Control happens in that provider (link out + optional API token later).
+- **Monitor → incident → notify → recover.** Failed checks create an incident, trigger auto-restart policy (e.g. 3 retries), then alert (Telegram first).
+- **AI never gets raw shell.** It gets tools: `get_status, get_logs, check_port, restart_project, deploy_project, run_safe_command`. Free-form shell only in explicit Admin mode with audit + confirm.
 
-## Project types
+## Project lifecycle (per app)
 
-| Type | Example | Dashboard does |
-|------|---------|----------------|
-| `local` | `/root/Software_projects/echoo/backend` on `:8000` | spawn process, ping `http://localhost:8000/health`, keep logs, start/stop |
-| `external` | `https://myapp.vercel.app` | only ping URL + show status, link out, no process control |
+Each project shows: status, uptime (process), CPU/mem (via `/proc`), restart count, last deploy (commit/branch/time), current git sha, port + public URL, environment (`local | vercel | railway | render | other`), health history.
 
-## Status model
+Auto-recovery policy (local):
 
-- `UP` — 200–399
-- `DEGRADED` — reachable but 404 / 500 / wrong body (saves response snippet for AI)
-- `DOWN` — timeout, ECONNREFUSED, or local PID dead
-- Each check stores `{ timestamp, code, latencyMs, error }` → uptime % + latency sparkline in UI.
-
-## Planned registry format
-
-```json
-{
-  "projects": [
-    {
-      "name": "echoo-backend",
-      "type": "local",
-      "cwd": "/root/Software_projects/echoo/backend",
-      "startCmd": "npm run start",
-      "port": 8000,
-      "url": "http://localhost:8000/health"
-    },
-    {
-      "name": "digistream",
-      "type": "external",
-      "host": "vercel",
-      "url": "https://digistream.vercel.app"
-    }
-  ]
-}
+```text
+on crash/exit or 3 failed checks in a row:
+  wait 5s → restart (attempt 1/3)
+  verify /health within 20s
+  if still failing after 3 attempts → mark DOWN + open incident + alert
+  respect restart policy: maxRestarts, cooldown, startOnBoot
 ```
 
-## Planned API (v1)
+Graceful shutdown (`SIGTERM` → wait → `SIGKILL`), startup probe, dependency check (port free? `.env` present?), lock file so two dashboard instances don't fight over one project.
 
-- `GET /api/projects` — list registry
-- `POST /api/projects` — add local or external project
-- `GET /api/status` — latest check per project + history
-- `POST /api/:name/start|stop|restart` — process control (local only)
-- `GET /api/:name/logs?lines=200` — log tail
-- `POST /api/:name/exec` — `{ cmd }`, run in `cwd`, return output (terminal backend)
-- `POST /api/:name/ai-ask` — `{ question }`, builds context (status + logs + package.json), shells to configured AI CLI, streams answer
+## Deployments (local git)
 
-## Web terminal (v1 scope)
+```text
+Deploy #18 (echoo-backend @ a83f91d, main)
+  git fetch + checkout → npm install → build → pre-deploy cmd
+  → restart → wait healthy (3 OK checks) → post-deploy cmd
+  on health fail → rollback to previous sha + mark deployment failed
+```
 
-Not a full PTY (`node-pty` doesn't work reliably in Proot). v1 = command box + output pane: send a command, run it in the project's `cwd` with timeout + allowlist, stream back stdout/stderr. Scoped so one project can't `rm -rf /root/other`. Full xterm PTY is a later upgrade.
+Actions: deploy latest, deploy chosen sha, restart w/o pull, rollback, view diff/files, full build log. Pre/post hooks per project (e.g. `npm run migrate`). Vercel projects: deep-link to Vercel deployment + (later) trigger via Vercel API, never fake local control.
 
-## AI helper (v1 scope)
+## Monitoring (v1 + next)
 
-The dashboard does **not** embed an LLM key. It builds a prompt like:
+v1: HTTP status + latency + process-alive. Stores `{ ts, code, latencyMs, error }` → 24h/7d/30d uptime, p50/p95/p99 later.
 
-> Project X is DOWN. Last check: ECONNREFUSED after 10s. Last 100 log lines: [...] package.json start script: [...] What likely failed and what command should I run?
+Next checks (pluggable): expected body/JSON (`{"database":"connected"}`), TCP port, PID alive, SSL expiry, disk/memory pressure, DB reachability, custom `healthConfig` per project. Example in `docs/api-v1.md`.
 
-...then executes the AI CLI you chose in settings (`opencode run "..."`, `codex exec "..."`, etc.) inside the project dir and returns the output. Swap/install any AI without changing the dashboard.
+## Incidents & notifications
 
-## Constraints (this server)
+A red card is not enough — v1 records an incident `{ id, projectId, startedAt, cause, timeline[], recoveryAttempts, resolvedAt }` with ack + notes + maintenance window ("don't alert 02:00–03:00"). Alert order: Telegram → Discord webhook → Email → generic webhook → Slack. Rules, not hardcodes: "Telegram me if DOWN > 60s; Discord if >5 restarts/10min". Dedupe + auto-resolve on recovery.
 
-- Proot-Ubuntu on Termux (Android), Node v20, no Docker / PM2 / Nginx / systemd.
-- So: file-based storage (`projects.json`, `status.json`, `logs/`), zero Docker dependency, `npm install` with minimal deps (prefer stdlib `http` + tiny `ws` only).
-- Dashboard itself must survive restarts: documented as `nohup node server.js &` + tunnel command, later a simple keep-alive script.
+## Terminal & AI safety (read this)
+
+Terminal is RCE if done wrong. v1 rules:
+
+- Auth + short-lived session token, per-project permission, `cwd` jail, timeout (30s), output cap (100KB), env-secret masking, every command in `audit.json`, destructive commands need confirm, optional read-only mode.
+- `spawn(cmd, args, { cwd, shell: false })` — no `bash -c "user;injection"`. Two modes: **Safe** (allowlisted tools) and **Admin** (free shell, explicit grant + audit).
+- AI levels: **Explain** (read-only analysis) → **Propose** (plan for approval) → **Execute** (only tool calls, logged, reversible where possible). No autonomous arbitrary exec.
+
+Full rules: `docs/security.md` + `docs/threat-model.md`.
+
+## Multi-server (later, designed now)
+
+One central dashboard + tiny agents that dial out (no inbound ports):
+
+```text
+Central ──HTTPS/WS── Agent A (this Termux box) ── Agent B (VPS) ── Agent C (Pi)
+```
+
+Agent advertises `{ hostname, platform, mem, projects, version }`; central aggregates status/logs/deploys. v1 is single-server but IDs (`agentId`, stable `id` not display name) already assume this. See `docs/architecture.md`.
+
+## Templates & autodetect (later, hooks in v1)
+
+`Node API / Express / Next.js / Flask / FastAPI / static / Vercel` templates define `{ detect, install, build, start, healthPath }`. v1 already stores `runtime` + `source` fields so templates slot in; autodetect (`package.json` → start/port/health) lands in Phase 3.
+
+## This server's constraints
+
+Proot-Ubuntu on Termux, Node v20, **no** Docker/PM2/Nginx/systemd. So: stdlib-first Node (`http` + one `ws` dep max), file JSON storage in v1 (migrate to SQLite when checks/deploys/incidents need querying), `nohup node server.js &` + tunnel (ngrok/Cloudflare) for access, keep-alive script later. No native modules (`better-sqlite3`, `node-pty`) in v1 — they break in Proot.
 
 ## Roadmap
 
-- [x] Repo + vision (this README)
-- [ ] v1 spec: exact API shapes + UI wireframe
-- [ ] v1 build: registry + monitor + runner + log viewer + status UI
-- [ ] v1 build: exec endpoint + terminal pane
-- [ ] v1 build: ai-ask endpoint + settings for AI CLI
-- [ ] v1 hardening: auth token, allowlist, log rotation, keep-alive
-- [ ] Later: uptime alerts (Telegram/email), latency charts, full PTY, Docker support if host changes
+- **Phase 1 — Secure monitoring MVP:** registry, HTTP checks, status cards, latency, log viewer, auth, rotation. Terminal/AI *read-only only*.
+- **Phase 2 — Process control:** start/stop/restart, PID tracking, crash detect, auto-restart, cpu/mem, boot recovery, streaming logs.
+- **Phase 3 — Deploy engine:** git pull/build/verify/rollback, history, pre/post hooks, Vercel link + API trigger.
+- **Phase 4 — Incidents & alerts:** incident records, maintenance, Telegram/Discord, SSL/disk/mem checks, alert rules.
+- **Phase 5 — AI ops:** structured diagnosis JSON, log summarization, proposed fixes, approved execution, fix history, incident reports.
+- **Phase 6 — Multi-server:** agents, remote control, server overview, team RBAC.
+
+## Repo layout (target)
+
+```text
+README.md
+docs/architecture.md
+docs/security.md
+docs/api-v1.md
+docs/registry-schema.md
+docs/threat-model.md
+server/  (phase 2+)
+public/  (phase 2+)
+```
 
 ## Status
 
-Planning. No implementation yet — README is the contract. Next commit will be the v1 API spec.
+Planning — this README + `docs/` is the contract. No runtime code yet. Next: implement Phase 1 MVP.
