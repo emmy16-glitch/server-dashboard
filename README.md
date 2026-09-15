@@ -25,7 +25,7 @@ Inspired by UptimeRobot (monitoring) + PM2 (processes) + Vercel (deploys) + Port
 
 Post-v1: incidents, Telegram/Discord alerts, SSL/disk/memory checks, multi-server agents, templates.
 
-See `docs/` for details: `architecture.md`, `api-v1.md`, `registry-schema.md`, `security.md`, `threat-model.md`.
+See `docs/` for details: `architecture.md`, `api-v1.md`, `registry-schema.md`, `security.md`, `threat-model.md`, `integrations-plan.md` (which of 50 trending open-source repos we borrow from, host as templates, or skip — with reasons).
 
 ## Quick mental model
 
@@ -118,12 +118,14 @@ Proot-Ubuntu on Termux, Node v20, **no** Docker/PM2/Nginx/systemd. So: stdlib-fi
 
 ## Roadmap
 
-- **Phase 1 — Secure monitoring MVP:** registry, HTTP checks, status cards, latency, log viewer, auth, rotation. Terminal/AI *read-only only*.
+- **Phase 1 — Secure monitoring MVP:** registry, HTTP checks, status cards, latency, log viewer, auth, rotation + AI provider switcher (`opencode|codex|claude|ollama` stub) + keyword log-retrieval. Terminal/AI *read-only only*.
 - **Phase 2 — Process control:** start/stop/restart, PID tracking, crash detect, auto-restart, cpu/mem, boot recovery, streaming logs.
-- **Phase 3 — Deploy engine:** git pull/build/verify/rollback, history, pre/post hooks, Vercel link + API trigger.
-- **Phase 4 — Incidents & alerts:** incident records, maintenance, Telegram/Discord, SSL/disk/mem checks, alert rules.
-- **Phase 5 — AI ops:** structured diagnosis JSON, log summarization, proposed fixes, approved execution, fix history, incident reports.
-- **Phase 6 — Multi-server:** agents, remote control, server overview, team RBAC.
+- **Phase 3 — Deploy engine + templates:** git pull/build/verify/rollback, history, pre/post hooks, Vercel link + API trigger, 17 app/dev templates + autodetect.
+- **Phase 4 — Incidents & alerts:** incident records, maintenance, Telegram/Discord, `body-json/tcp/ssl/disk/mem` checks (`browser` interface only), alert rules.
+- **Phase 5 — AI ops:** structured diagnosis JSON, incident memory (`memory/*.json`), MCP tools manifest, grounded docs lookup, proposed fixes, approved execution, fix history, incident reports.
+- **Phase 6 — Multi-server:** agents, remote control, server overview, team RBAC (agents also serve MCP tools).
+
+Full borrow/host/skip triage: `docs/integrations-plan.md`.
 
 ## Repo layout (target)
 
@@ -134,6 +136,10 @@ docs/security.md
 docs/api-v1.md
 docs/registry-schema.md
 docs/threat-model.md
+docs/integrations-plan.md
+docs/mcp-tools.md (phase 5)
+templates/ (phase 3)
+memory/ (phase 5, runtime, gitignored)
 server/  (phase 2+)
 public/  (phase 2+)
 ```
