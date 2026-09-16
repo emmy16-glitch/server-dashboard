@@ -135,6 +135,27 @@
         "recovered": true
       },
       "template": "vercel-external"
+    },
+    {
+      "id": "diginorth",
+      "enabled": true,
+      "name": "Diginorth",
+      "description": "",
+      "location": {
+        "type": "external",
+        "agentId": "local",
+        "provider": "custom"
+      },
+      "runtime": {
+        "healthUrl": "https://diginorth.net"
+      },
+      "monitoring": {
+        "intervalSeconds": 60,
+        "timeoutSeconds": 10,
+        "expectedStatus": [
+          200
+        ]
+      }
     }
   ]
 }

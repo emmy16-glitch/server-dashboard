@@ -19,14 +19,14 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
-const PRESETS = [
-  { name: 'Tactical Industrial Panel', desc: 'Machined slate, dense rack layout, tactical telemetry' },
-  { name: 'Swiss Studio Glass', desc: 'Frosted cyan glass, spacious grid, Akzidenz precision' },
-  { name: 'Tokyo Minimalist Paper', desc: 'Archival washi paper, asymmetric flow, quiet Japanese ma' },
-  { name: 'CRT Phosphor Terminal', desc: 'Authentic green CRT screen, scanlines, monospace matrix' },
-  { name: 'Bloomberg Financial Monolith', desc: 'Trading desk density, financial order book, micro-latency' },
-  { name: 'Archival Broadsheet Editorial', desc: 'Editorial typography, high-contrast narrative stories' },
-  { name: 'Playful Cyber Ops', desc: 'Cyberpunk glass, bouncy micro-interactions, tamagotchi ops' },
+const PRESETS: { name: string; desc: string; state: { material: MaterialType; composition: CompositionType; structure: StructureType; feeling: FeelingType } }[] = [
+  { name: 'Tactical Industrial Panel', desc: 'Machined slate, dense rack layout, tactical telemetry', state: { material: 'industrial panel', composition: 'dense', structure: 'brutalist', feeling: 'tactical' } },
+  { name: 'Swiss Studio Glass', desc: 'Frosted cyan glass, spacious grid, Akzidenz precision', state: { material: 'glass', composition: 'spacious', structure: 'swiss', feeling: 'precise' } },
+  { name: 'Tokyo Minimalist Paper', desc: 'Archival washi paper, asymmetric flow, quiet Japanese ma', state: { material: 'paper', composition: 'asymmetric', structure: 'japanese minimal', feeling: 'quiet' } },
+  { name: 'CRT Phosphor Terminal', desc: 'Authentic green CRT screen, scanlines, monospace matrix', state: { material: 'terminal', composition: 'dense', structure: 'brutalist', feeling: 'tactical' } },
+  { name: 'Bloomberg Financial Monolith', desc: 'Trading desk density, financial order book, micro-latency', state: { material: 'industrial panel', composition: 'dense', structure: 'financial', feeling: 'precise' } },
+  { name: 'Archival Broadsheet Editorial', desc: 'Editorial typography, high-contrast narrative stories', state: { material: 'paper', composition: 'editorial', structure: 'swiss', feeling: 'quiet' } },
+  { name: 'Playful Cyber Ops', desc: 'Cyberpunk glass, bouncy micro-interactions, tamagotchi ops', state: { material: 'glass', composition: 'asymmetric', structure: 'brutalist', feeling: 'playful' } },
 ];
 
 export const DesignBar: React.FC = () => {
@@ -63,28 +63,36 @@ export const DesignBar: React.FC = () => {
     setTimeout(() => setCopiedShare(false), 2000);
   };
 
+  const currentPreset =
+    PRESETS.find(
+      (p) =>
+        p.state.material === design.material &&
+        p.state.composition === design.composition &&
+        p.state.structure === design.structure &&
+        p.state.feeling === design.feeling
+    )?.name || 'custom';
+
   return (
     <div className="w-full border-b sticky top-0 z-40 transition-colors backdrop-blur-md bg-opacity-95 text-xs">
-      <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-2">
-        {/* Preset Selector */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-black/10 dark:bg-white/10 font-mono font-semibold">
+      {/* Compact top row: preset + matrix toggle + sign out only */}
+      <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-black/10 dark:bg-white/10 font-mono font-semibold whitespace-nowrap">
             <SlidersHorizontal className="w-3.5 h-3.5 text-amber-500" />
-            <span className="uppercase tracking-wider text-[11px]">System Variant:</span>
+            <span className="uppercase tracking-wider text-[11px] hidden sm:inline">System Variant:</span>
           </div>
 
-          <div className="relative inline-block">
+          <div className="relative inline-block min-w-0">
             <select
-              value={
-                PRESETS.find(
-                  (p) =>
-                    p.name.toLowerCase().includes(design.material) &&
-                    p.name.toLowerCase().includes(design.structure)
-                )?.name || 'Custom Combination'
-              }
-              onChange={(e) => applyPreset(e.target.value)}
-              className="bg-black/15 dark:bg-white/10 hover:bg-black/25 dark:hover:bg-white/20 border border-current/20 rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors pr-6 focus:outline-none"
+              value={currentPreset}
+              onChange={(e) => { if (e.target.value !== 'custom') applyPreset(e.target.value); }}
+              className="bg-black/15 dark:bg-white/10 hover:bg-black/25 dark:hover:bg-white/20 border border-current/20 rounded px-2 py-1 text-xs font-medium cursor-pointer transition-colors focus:outline-none max-w-[42vw] truncate"
             >
+              {currentPreset === 'custom' && (
+                <option value="custom" className="bg-slate-900 text-slate-100">
+                  Custom
+                </option>
+              )}
               {PRESETS.map((p) => (
                 <option key={p.name} value={p.name} className="bg-slate-900 text-slate-100">
                   {p.name}
@@ -95,82 +103,36 @@ export const DesignBar: React.FC = () => {
 
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition-all font-mono text-[11px]"
-            title="Fine-tune material, composition, structure, feeling"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition-all font-mono text-[11px] whitespace-nowrap"
+            title="Fine-tune material, composition, structure, feeling + display & session"
           >
-            <span>Design Matrix</span>
+            <span className="hidden sm:inline">Design Matrix</span>
+            <span className="sm:hidden">Matrix</span>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           </button>
         </div>
 
-        {/* Global Controls & Read-Only Badge */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Sound Synthesizer Toggle */}
+        {/* Sign out only — everything else moved into the matrix panel */}
+        <div className="flex items-center gap-1 font-mono text-[11px] opacity-75 flex-shrink-0">
+          {isReadOnlyMode && (
+            <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px]">
+              RO
+            </span>
+          )}
+          <span className="hidden lg:inline">{authToken ? `${authToken.slice(0, 11)}...` : 'demo mode'}</span>
           <button
-            onClick={() => {
-              setDesign((prev) => ({ ...prev, soundEnabled: !prev.soundEnabled }));
-              playHapticAudio('click');
-            }}
-            className={`flex items-center gap-1 px-2 py-1 rounded font-mono text-[11px] transition-colors ${
-              design.soundEnabled
-                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                : 'opacity-50 hover:opacity-80'
-            }`}
-            title="Synthetic hardware audio haptics (Web Audio API)"
+            onClick={() => logout()}
+            title="Sign out (clears stored token)"
+            className="ml-1 px-1.5 py-1 rounded hover:bg-black/20 dark:hover:bg-white/20 font-sans font-semibold"
           >
-            {design.soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">Haptics</span>
+            <LogOut className="w-3.5 h-3.5" />
           </button>
-
-          {/* CRT Scanline Toggle */}
-          <button
-            onClick={() => {
-              playHapticAudio('toggle');
-              setDesign((prev) => ({ ...prev, scanlines: !prev.scanlines }));
-            }}
-            className={`flex items-center gap-1 px-2 py-1 rounded font-mono text-[11px] transition-colors ${
-              design.scanlines
-                ? 'bg-amber-500/25 text-amber-500 border border-amber-500/40'
-                : 'opacity-50 hover:opacity-80'
-            }`}
-            title="CRT Cathode Scanlines simulation"
-          >
-            <Tv className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">CRT</span>
-          </button>
-
-          {/* Read-Only Share Link Mode */}
-          <button
-            onClick={() => setShowShareModal(true)}
-            className={`flex items-center gap-1 px-2 py-1 rounded font-mono text-[11px] transition-colors ${
-              isReadOnlyMode
-                ? 'bg-rose-500/20 text-rose-500 border border-rose-500/40'
-                : 'bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20'
-            }`}
-            title="Read-only share token (?share=ro_...)"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isReadOnlyMode ? 'Read-Only Active' : 'Share View'}</span>
-          </button>
-
-          {/* Auth Token Indicator + Sign out */}
-          <div className="flex items-center gap-1 font-mono text-[11px] opacity-75">
-            <Key className="w-3 h-3" />
-            <span className="hidden md:inline">{authToken ? `${authToken.slice(0, 11)}...` : 'demo mode'}</span>
-            <button
-              onClick={() => logout()}
-              title="Sign out (clears stored token)"
-              className="ml-1 px-1.5 py-0.5 rounded hover:bg-black/20 dark:hover:bg-white/20 font-sans font-semibold"
-            >
-              <LogOut className="w-3 h-3" />
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Expanded Dimensional Matrix Bar */}
       {expanded && (
-        <div className="border-t border-current/10 py-3 px-4 max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 animate-fadeIn">
+        <div className="border-t border-current/10 py-3 px-4 max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-4 animate-fadeIn">
           {/* 1. Material */}
           <div className="space-y-1.5">
             <div className="text-[10px] uppercase font-mono tracking-wider opacity-60 flex items-center gap-1">
@@ -260,6 +222,59 @@ export const DesignBar: React.FC = () => {
                   {f}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* 5. Display & Session */}
+          <div className="space-y-1.5 col-span-2 md:col-span-1">
+            <div className="text-[10px] uppercase font-mono tracking-wider opacity-60 flex items-center gap-1">
+              <Tv className="w-3 h-3" />
+              <span>5. Display & Session</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-1 gap-1">
+              <button
+                onClick={() => {
+                  setDesign((prev) => ({ ...prev, soundEnabled: !prev.soundEnabled }));
+                  playHapticAudio('click');
+                }}
+                className={`px-2 py-1 text-left text-xs rounded transition-all flex items-center gap-1.5 ${
+                  design.soundEnabled
+                    ? 'font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                    : 'hover:bg-current/10 opacity-70'
+                }`}
+              >
+                {design.soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                Haptics
+              </button>
+              <button
+                onClick={() => {
+                  playHapticAudio('toggle');
+                  setDesign((prev) => ({ ...prev, scanlines: !prev.scanlines }));
+                }}
+                className={`px-2 py-1 text-left text-xs rounded transition-all flex items-center gap-1.5 ${
+                  design.scanlines
+                    ? 'font-bold bg-amber-500/25 text-amber-500 border border-amber-500/40'
+                    : 'hover:bg-current/10 opacity-70'
+                }`}
+              >
+                <Tv className="w-3.5 h-3.5" />
+                CRT scanlines
+              </button>
+              <button
+                onClick={() => setShowShareModal(true)}
+                className={`px-2 py-1 text-left text-xs rounded transition-all flex items-center gap-1.5 ${
+                  isReadOnlyMode
+                    ? 'font-bold bg-rose-500/20 text-rose-500 border border-rose-500/40'
+                    : 'hover:bg-current/10 opacity-70'
+                }`}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                {isReadOnlyMode ? 'Read-Only Active' : 'Share view'}
+              </button>
+              <div className="px-2 py-1 text-xs rounded hover:bg-current/10 opacity-70 flex items-center gap-1.5 font-mono">
+                <Key className="w-3.5 h-3.5" />
+                <span className="truncate">{authToken ? `${authToken.slice(0, 11)}...` : 'demo mode'}</span>
+              </div>
             </div>
           </div>
         </div>

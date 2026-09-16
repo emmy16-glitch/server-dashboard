@@ -115,11 +115,11 @@ export const AgentsMatrix: React.FC = () => {
                     <span className="opacity-60 flex items-center gap-1">
                       <Cpu className="w-3 h-3 text-cyan-400" /> CPU Load
                     </span>
-                    <span className="font-bold">{agent.cpuPct.toFixed(1)}%</span>
+                    <span className="font-bold">{(agent.cpuPct ?? 0).toFixed(1)}%</span>
                   </div>
                   <div className="h-1.5 w-full bg-black/30 rounded-full overflow-hidden">
                     <div
-                      style={{ width: `${agent.cpuPct}%` }}
+                      style={{ width: `${(agent.cpuPct ?? 0)}%` }}
                       className="h-full bg-cyan-400 rounded-full"
                     />
                   </div>
@@ -132,12 +132,12 @@ export const AgentsMatrix: React.FC = () => {
                       <HardDrive className="w-3 h-3 text-amber-400" /> Memory (RAM)
                     </span>
                     <span className="font-bold">
-                      {(agent.memUsedMB / 1024).toFixed(1)}G / {(agent.memTotalMB / 1024).toFixed(1)}G
+                      {((agent.memUsedMB ?? 0) / 1024).toFixed(1)}G / {((agent.memTotalMB ?? 0) / 1024).toFixed(1)}G
                     </span>
                   </div>
                   <div className="h-1.5 w-full bg-black/30 rounded-full overflow-hidden">
                     <div
-                      style={{ width: `${(agent.memUsedMB / agent.memTotalMB) * 100}%` }}
+                      style={{ width: `${agent.memTotalMB ? ((agent.memUsedMB ?? 0) / agent.memTotalMB) * 100 : 0}%` }}
                       className="h-full bg-amber-400 rounded-full"
                     />
                   </div>
@@ -150,12 +150,12 @@ export const AgentsMatrix: React.FC = () => {
                       <Server className="w-3 h-3 text-emerald-400" /> Storage (/dev/root)
                     </span>
                     <span className="font-bold">
-                      {agent.diskUsedGB.toFixed(0)}G / {agent.diskTotalGB.toFixed(0)}G
+                      {(agent.diskUsedGB ?? 0).toFixed(0)}G / {(agent.diskTotalGB ?? 0).toFixed(0)}G
                     </span>
                   </div>
                   <div className="h-1.5 w-full bg-black/30 rounded-full overflow-hidden">
                     <div
-                      style={{ width: `${(agent.diskUsedGB / agent.diskTotalGB) * 100}%` }}
+                      style={{ width: `${agent.diskTotalGB ? ((agent.diskUsedGB ?? 0) / agent.diskTotalGB) * 100 : 0}%` }}
                       className="h-full bg-emerald-400 rounded-full"
                     />
                   </div>

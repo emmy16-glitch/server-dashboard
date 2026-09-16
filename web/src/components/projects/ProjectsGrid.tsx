@@ -2,6 +2,7 @@ import React from 'react';
 import { Project } from '../../types/dashboard';
 import { useDashboard } from '../../context/DashboardContext';
 import { getThemeClasses } from '../../utils/themeStyles';
+import { friendlyCause, timeAgo } from '../../utils/time';
 import { ProjectCard } from './ProjectCard';
 import {
   Search,
@@ -35,35 +36,39 @@ export const ProjectsGrid: React.FC<ProjectsGridProps> = ({
 
   const theme = getThemeClasses(design);
 
-  // Filter projects by search and status
-  const filteredProjects = projects.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.tags && p.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase())));
+  // Filter projects by search and status, problems first
+  const statusRank = (s: Project['status']) =>
+    s === 'DOWN' ? 0 : s === 'DEGRADED' ? 1 : s === 'STARTING' ? 2 : s === 'UP' ? 3 : 4;
+  const filteredProjects = projects
+    .filter((p) => {
+      const matchesSearch =
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.tags && p.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase())));
 
-    if (!matchesSearch) return false;
+      if (!matchesSearch) return false;
 
-    if (filterStatus === 'all') return true;
-    if (filterStatus === 'up') return p.status === 'UP';
-    if (filterStatus === 'degraded') return p.status === 'DEGRADED';
-    if (filterStatus === 'down') return p.status === 'DOWN';
-    if (filterStatus === 'stopped') return p.status === 'STOPPED';
-    if (filterStatus === 'local') return p.location.type === 'local';
-    if (filterStatus === 'external') return p.location.type === 'external';
-    return true;
-  });
+      if (filterStatus === 'all') return true;
+      if (filterStatus === 'attention') return p.status === 'DEGRADED' || p.status === 'DOWN';
+      if (filterStatus === 'up') return p.status === 'UP';
+      if (filterStatus === 'stopped') return p.status === 'STOPPED';
+      // legacy stored filters fall back to all
+      return true;
+    })
+    .sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
   const activeIncident = incidents.find((i) => i.state !== 'resolved');
+  const incidentProject = activeIncident
+    ? projects.find((p) => p.id === activeIncident.projectId)
+    : undefined;
 
-  // Filter options
+  // Filter options (kept minimal: problem-first)
+  const attentionCount = projects.filter((p) => p.status === 'DEGRADED' || p.status === 'DOWN').length;
   const filterPills = [
-    { id: 'all', label: 'All Services', count: projects.length },
-    { id: 'degraded', label: 'Degraded', count: projects.filter((p) => p.status === 'DEGRADED').length, alert: true },
+    { id: 'all', label: 'All', count: projects.length },
+    { id: 'attention', label: 'Needs attention', count: attentionCount, alert: attentionCount > 0 },
     { id: 'up', label: 'Healthy', count: projects.filter((p) => p.status === 'UP').length },
     { id: 'stopped', label: 'Stopped', count: projects.filter((p) => p.status === 'STOPPED').length },
-    { id: 'local', label: 'Local (Termux)', count: projects.filter((p) => p.location.type === 'local').length },
-    { id: 'external', label: 'External (Vercel/Cloud)', count: projects.filter((p) => p.location.type === 'external').length },
   ];
 
   // Editorial layout helper: pick lead project
@@ -88,13 +93,13 @@ export const ProjectsGrid: React.FC<ProjectsGridProps> = ({
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-500 font-bold">
-                  Active Incident #{activeIncident.id}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm">
+                  {incidentProject?.name || activeIncident.projectName || 'A service'} needs attention
                 </span>
-                <span className="text-xs font-mono opacity-70">Started {activeIncident.startedAt}</span>
+                <span className="text-xs font-mono opacity-70">{timeAgo(activeIncident.startedAt)}</span>
               </div>
-              <p className="text-sm font-semibold mt-0.5">{activeIncident.cause}</p>
+              <p className="text-xs opacity-80 mt-0.5">{friendlyCause(activeIncident.cause)}</p>
             </div>
           </div>
 
@@ -115,7 +120,7 @@ export const ProjectsGrid: React.FC<ProjectsGridProps> = ({
               }}
               className="px-3 py-1.5 rounded border border-amber-500/40 hover:bg-amber-500/20 text-amber-500 transition-all"
             >
-              View Timeline
+              Timeline
             </button>
           </div>
         </div>
@@ -151,7 +156,7 @@ export const ProjectsGrid: React.FC<ProjectsGridProps> = ({
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50" />
           <input
             type="text"
-            placeholder="Filter by name, ID, port, or tag (e.g. echoo, vercel, 8000)..."
+            placeholder="Search services..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={`w-full pl-9 pr-3 py-1.5 text-xs ${theme.input}`}

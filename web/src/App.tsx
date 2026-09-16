@@ -21,9 +21,46 @@ import {
   Layers,
 } from 'lucide-react';
 
+class DashboardErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: string | null }> {
+  state = { error: null as string | null };
+  static getDerivedStateFromError(e: unknown) {
+    return { error: e instanceof Error ? e.message : 'Something went wrong.' };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950 text-slate-100 font-mono">
+          <div className="max-w-md w-full p-8 space-y-4 border border-red-500/30 rounded-lg bg-slate-900 text-center">
+            <h1 className="font-bold text-lg">Dashboard hit an error</h1>
+            <p className="text-xs opacity-70 break-words">{this.state.error}</p>
+            <button
+              onClick={() => { localStorage.removeItem('sd-token'); window.location.reload(); }}
+              className="w-full py-2.5 rounded-md font-semibold text-sm bg-blue-600 text-white hover:bg-blue-500"
+            >
+              Clear saved sign-in & reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const DashboardContent: React.FC = () => {
-  const { design, authed } = useDashboard();
+  const { design, authed, authChecked, addServiceSignal, openAddService } = useDashboard();
   const theme = getThemeClasses(design);
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100 font-mono">
+        <div className="text-center space-y-3">
+          <Server className="w-6 h-6 mx-auto animate-pulse text-cyan-400" />
+          <p className="text-xs opacity-60">Connecting to server…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!authed) return <LoginScreen />;
 
@@ -31,7 +68,16 @@ const DashboardContent: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [modalInitialTab, setModalInitialTab] = useState<string>('logs');
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [addModalType, setAddModalType] = useState<'local' | 'external'>('external');
   const [showMcpModal, setShowMcpModal] = useState<boolean>(false);
+
+  // Any screen can request the add-service form on a specific choice.
+  React.useEffect(() => {
+    if (addServiceSignal) {
+      setAddModalType(addServiceSignal.type);
+      setShowAddModal(true);
+    }
+  }, [addServiceSignal]);
 
   const handleOpenDetails = (proj: Project, tab = 'logs') => {
     setSelectedProject(proj);
@@ -75,7 +121,7 @@ const DashboardContent: React.FC = () => {
         <Header
           currentTab={currentTab}
           setCurrentTab={setCurrentTab}
-          onOpenAddModal={() => setShowAddModal(true)}
+          onOpenAddModal={() => openAddService('external')}
         />
 
         {/* Main Workspace Area */}
@@ -114,32 +160,16 @@ const DashboardContent: React.FC = () => {
               <span>server-dashboard</span>
             </span>
             <span className="opacity-40">·</span>
-            <span className="opacity-70">
-              Host: <code className="bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded">android/proot (Termux)</code>
-            </span>
-            <span className="opacity-40">·</span>
-            <span className="opacity-70">No Docker/PM2</span>
-            <span className="opacity-40">·</span>
             <button
               onClick={() => setShowMcpModal(true)}
               className="text-cyan-400 hover:underline flex items-center gap-1"
             >
               <Layers className="w-3 h-3" />
-              <span>MCP Tools Manifest</span>
+              <span>Tools</span>
             </button>
           </div>
 
           <div className="flex items-center gap-4 text-[11px] opacity-75">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>
-                Theme: <strong className="capitalize">{design.material}</strong> /{' '}
-                <strong className="capitalize">{design.composition}</strong> /{' '}
-                <strong className="capitalize">{design.structure}</strong> /{' '}
-                <strong className="capitalize">{design.feeling}</strong>
-              </span>
-            </div>
-
             <a
               href="https://github.com/emmy16-glitch/server-dashboard"
               target="_blank"
@@ -165,7 +195,7 @@ const DashboardContent: React.FC = () => {
       )}
 
       {/* Add New Project Modal */}
-      {showAddModal && <AddProjectModal onClose={() => setShowAddModal(false)} />}
+      {showAddModal && <AddProjectModal initialType={addModalType} onClose={() => setShowAddModal(false)} />}
 
       {/* MCP Tools Modal */}
       {showMcpModal && (
@@ -188,7 +218,9 @@ const DashboardContent: React.FC = () => {
 export default function App() {
   return (
     <DashboardProvider>
-      <DashboardContent />
+      <DashboardErrorBoundary>
+        <DashboardContent />
+      </DashboardErrorBoundary>
     </DashboardProvider>
   );
 }

@@ -129,6 +129,11 @@ async function check(project) {
           const notifier = require("./notifier");
           if (project.notifications?.down !== false) void notifier.alert("down", project, incident);
         } catch { /* alerts best-effort */ }
+        // automatic AI diagnose + safe auto-fix (local restart only, capped)
+        try {
+          const snap = { status, code: r.code, latencyMs: r.latencyMs, error: r.error };
+          void require("./autoheal").maybeAutoHeal(project, snap).catch(() => {});
+        } catch { /* autoheal best-effort */ }
       }
     } else if (status === "UP" && was) {
       prev._hadOpen = false;
@@ -149,22 +154,23 @@ async function check(project) {
 }
 
 function startLoop(getProjects) {
-  const arm = (p) => {
-    if (timers[p.id]) clearInterval(timers[p.id]);
-    const secs = p.monitoring?.intervalSeconds || 30;
-    timers[p.id] = setInterval(() => {
-      const list = getProjects();
-      const cur = list.find((x) => x.id === p.id);
-      if (cur) void check(cur);
-    }, secs * 1000);
-    timers[p.id].unref?.();
-  };
   // initial pass + arm
   const list = getProjects();
   list.forEach((p) => {
-    void check(p).then(() => arm(p));
+    void check(p).then(() => arm(p, getProjects));
   });
-  return { check, state };
+  return { check, state, arm };
 }
 
-module.exports = { startLoop, check, state, uptime };
+function arm(p, getProjects) {
+  if (timers[p.id]) clearInterval(timers[p.id]);
+  const secs = p.monitoring?.intervalSeconds || 30;
+  timers[p.id] = setInterval(() => {
+    const list = getProjects();
+    const cur = list.find((x) => x.id === p.id);
+    if (cur) void check(cur);
+  }, secs * 1000);
+  timers[p.id].unref?.();
+}
+
+module.exports = { startLoop, check, state, uptime, arm };

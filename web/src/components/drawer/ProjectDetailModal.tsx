@@ -53,6 +53,11 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
   const isLocal = project.location.type === 'local';
   const projectLogs = logs[project.id] || [];
+  const statusLabel =
+    project.status === 'UP' ? 'Up'
+    : project.status === 'DEGRADED' ? 'Needs attention'
+    : project.status === 'DOWN' ? 'Down'
+    : project.status === 'STOPPED' ? 'Stopped' : 'Starting';
 
   // Filter logs by search or keyword RAG
   const filteredLogs = projectLogs.filter((line) =>
@@ -76,21 +81,18 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                   : theme.badgeDown
               }`}
             >
-              ● {project.status}
+              ● {statusLabel}
             </span>
 
             <div className="min-w-0">
-              <h2 className="text-lg font-bold tracking-tight truncate flex items-center gap-2">
-                <span>{project.name}</span>
-                <span className="font-mono text-xs opacity-60 font-normal">({project.id})</span>
+              <h2 className="text-lg font-bold tracking-tight truncate">
+                {project.name}
               </h2>
               <div className="text-xs font-mono opacity-65 flex items-center gap-2 truncate">
                 {isLocal ? (
                   <>
                     <Radio className="w-3 h-3 text-cyan-400" />
-                    <span>port :{project.runtime.port}</span>
-                    <span>·</span>
-                    <span>cwd: {project.location.cwd}</span>
+                    <span>Local · :{project.runtime.port}</span>
                   </>
                 ) : (
                   <>
@@ -142,7 +144,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                 className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1 ${theme.buttonSecondary}`}
               >
                 <RotateCw className="w-3.5 h-3.5" />
-                <span>Ping Probe</span>
+                <span>Check</span>
               </button>
             )}
 
@@ -162,11 +164,11 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
         {/* Modal Navigation Tabs */}
         <div className={`px-4 pt-2 border-b ${theme.border} flex items-center gap-2 overflow-x-auto no-scrollbar flex-shrink-0 text-xs font-mono`}>
           {[
-            { id: 'logs', label: 'Live Logs & RAG', icon: FileText, count: projectLogs.length },
-            { id: 'terminal', label: 'Safe Terminal', icon: Terminal, localOnly: true },
-            { id: 'ai', label: 'AI Ops Doctor', icon: Sparkles },
-            { id: 'deploys', label: 'Deploy & Rollback', icon: GitCommit, localOnly: true },
-            { id: 'overview', label: 'Telemetry & Config', icon: Activity },
+            { id: 'logs', label: 'Logs', icon: FileText, count: projectLogs.length },
+            { id: 'terminal', label: 'Terminal', icon: Terminal, localOnly: true },
+            { id: 'ai', label: 'AI Doctor', icon: Sparkles },
+            { id: 'deploys', label: 'Deploys', icon: GitCommit, localOnly: true },
+            { id: 'overview', label: 'Details', icon: Activity },
           ]
             .filter((t) => !t.localOnly || isLocal)
             .map((tab) => {
@@ -282,7 +284,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 font-mono text-xs">
                 <div className="p-3.5 rounded-lg border border-current/10 bg-current/5 space-y-1">
                   <span className="opacity-60 block flex items-center gap-1">
-                    <Activity className="w-3.5 h-3.5 text-cyan-400" /> Current Latency
+                    <Activity className="w-3.5 h-3.5 text-cyan-400" /> Speed
                   </span>
                   <span className="text-xl font-bold text-cyan-400">
                     {project.status === 'STOPPED' ? '---' : `${project.currentLatency}ms`}
@@ -291,7 +293,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
                 <div className="p-3.5 rounded-lg border border-current/10 bg-current/5 space-y-1">
                   <span className="opacity-60 block flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-emerald-400" /> 24h / 30d Uptime
+                    <Clock className="w-3.5 h-3.5 text-emerald-400" /> Uptime (24h)
                   </span>
                   <span className="text-xl font-bold text-emerald-400">
                     {project.uptime24h}%
@@ -300,19 +302,19 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
 
                 <div className="p-3.5 rounded-lg border border-current/10 bg-current/5 space-y-1">
                   <span className="opacity-60 block flex items-center gap-1">
-                    <Cpu className="w-3.5 h-3.5 text-amber-400" /> CPU Allocation
+                    <Cpu className="w-3.5 h-3.5 text-amber-400" /> CPU
                   </span>
                   <span className="text-xl font-bold">
-                    {project.process ? `${project.process.cpuPct}%` : 'External'}
+                    {project.process ? `${project.process.cpuPct}%` : '—'}
                   </span>
                 </div>
 
                 <div className="p-3.5 rounded-lg border border-current/10 bg-current/5 space-y-1">
                   <span className="opacity-60 block flex items-center gap-1">
-                    <HardDrive className="w-3.5 h-3.5 text-purple-400" /> Memory Resident
+                    <HardDrive className="w-3.5 h-3.5 text-purple-400" /> Memory
                   </span>
                   <span className="text-xl font-bold">
-                    {project.process ? `${project.process.memMB} MB` : 'Cloud'}
+                    {project.process ? `${project.process.memMB} MB` : '—'}
                   </span>
                 </div>
               </div>
@@ -322,26 +324,25 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                 <div className="flex items-center justify-between border-b border-current/10 pb-2">
                   <span className="font-bold uppercase tracking-wider text-xs flex items-center gap-1.5">
                     <Shield className="w-4 h-4 text-cyan-400" />
-                    <span>Registry Configuration (projects.json)</span>
+                    <span>Settings</span>
                   </span>
-                  <span className="text-[11px] opacity-60">Schema v1.0</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <div className="text-[11px] opacity-60">Health Monitor Target:</div>
+                    <div className="text-[11px] opacity-60">Checking:</div>
                     <div className="p-2 rounded bg-black/30 dark:bg-white/5 border border-current/10 break-all text-cyan-400">
                       {project.runtime.healthUrl}
                     </div>
 
-                    <div className="text-[11px] opacity-60 pt-1">Expected Status Codes:</div>
+                    <div className="text-[11px] opacity-60 pt-1">Healthy when status is:</div>
                     <div className="p-2 rounded bg-black/30 dark:bg-white/5 border border-current/10">
                       [{project.monitoring.expectedStatus.join(', ')}]
                     </div>
 
                     {project.monitoring.healthConfig && (
                       <>
-                        <div className="text-[11px] opacity-60 pt-1">Expected JSON Body Assertion:</div>
+                        <div className="text-[11px] opacity-60 pt-1">Answer must contain:</div>
                         <pre className="p-2 rounded bg-black/30 dark:bg-white/5 border border-current/10 text-amber-400">
                           {JSON.stringify(project.monitoring.healthConfig.json, null, 2)}
                         </pre>
@@ -350,13 +351,12 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({
                   </div>
 
                   <div className="space-y-1.5">
-                    <div className="text-[11px] opacity-60">Process Auto-Restart Policy:</div>
+                    <div className="text-[11px] opacity-60">Auto-restart:</div>
                     <div className="p-2.5 rounded bg-black/30 dark:bg-white/5 border border-current/10 space-y-1 leading-relaxed">
-                      <div>Auto-Restart: {project.runtime.autoRestart ? 'ENABLED' : 'DISABLED'}</div>
-                      <div>Max Retries: {project.runtime.maxRestarts || 5} per 15 minutes</div>
-                      <div>Cooldown: {project.runtime.restartCooldownSec || 5}s</div>
-                      <div>Start on Server Boot: {project.runtime.startOnBoot ? 'YES' : 'NO'}</div>
-                      <div>Supervisor: Native Node child_process (No Docker)</div>
+                      <div>{project.runtime.autoRestart ? 'On' : 'Off'}</div>
+                      <div>Max {project.runtime.maxRestarts || 5} tries per 15 minutes</div>
+                      <div>Waits {project.runtime.restartCooldownSec || 5}s between tries</div>
+                      <div>Starts on boot: {project.runtime.startOnBoot ? 'Yes' : 'No'}</div>
                     </div>
                   </div>
                 </div>

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useDashboard } from '../context/DashboardContext';
 import { getThemeClasses } from '../utils/themeStyles';
-import { Server, KeyRound, ArrowRight, Eye } from 'lucide-react';
+import { Server, KeyRound, ArrowRight } from 'lucide-react';
 
 export const LoginScreen: React.FC = () => {
-  const { design, login, enterDemo, playHapticAudio } = useDashboard();
+  const { design, login, playHapticAudio } = useDashboard();
   const theme = getThemeClasses(design);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,7 @@ export const LoginScreen: React.FC = () => {
     if (ok) {
       playHapticAudio('beep');
     } else {
-      setError('Token rejected — the server did not accept it. Check the token and try again.');
+      setError('Password rejected — the server did not accept it. Check the password and try again.');
     }
   };
 
@@ -40,20 +40,20 @@ export const LoginScreen: React.FC = () => {
 
         <div className="space-y-2">
           <label className="text-xs font-semibold uppercase tracking-wider opacity-60 flex items-center gap-1.5">
-            <KeyRound size={12} /> Admin token
+            <KeyRound size={12} /> Admin password
           </label>
           <input
             type="password"
             autoFocus
-            autoComplete="off"
-            placeholder="Paste the token printed on first server boot"
+            autoComplete="current-password"
+            placeholder="Enter your admin password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
             className="w-full px-3 py-2.5 rounded-md border border-current/20 bg-transparent font-mono text-sm outline-none focus:border-current/50"
           />
           {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
           <p className="text-[11px] opacity-50">
-            The token is printed once in the server log on first boot. Control APIs stay private — monitoring cards can be shared read-only.
+            Enter the admin password set on the server. Control APIs stay private — monitoring cards can be shared read-only.
           </p>
         </div>
 
@@ -65,13 +65,6 @@ export const LoginScreen: React.FC = () => {
           {busy ? 'Verifying…' : (<>Sign in <ArrowRight size={15} /></>)}
         </button>
 
-        <button
-          type="button"
-          onClick={() => { playHapticAudio('toggle'); enterDemo(); }}
-          className="w-full py-2 rounded-md text-xs opacity-60 hover:opacity-100 flex items-center justify-center gap-1.5"
-        >
-          <Eye size={13} /> Explore with demo data instead
-        </button>
       </form>
     </div>
   );

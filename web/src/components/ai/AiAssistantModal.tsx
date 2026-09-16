@@ -9,11 +9,8 @@ import {
   RotateCw,
   Terminal,
   Brain,
-  ShieldCheck,
   Send,
   Loader2,
-  Database,
-  Cpu,
 } from 'lucide-react';
 
 interface AiAssistantProps {
@@ -30,10 +27,9 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
   } = useDashboard();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
-    initialProject?.id || projects.find((p) => p.status === 'DEGRADED')?.id || projects[0]?.id
+    initialProject?.id || projects.find((p) => p.status === 'DOWN' || p.status === 'DEGRADED')?.id || projects[0]?.id
   );
 
-  const [provider, setProvider] = useState<'claude' | 'opencode' | 'codex' | 'ollama'>('claude');
   const [customQuestion, setCustomQuestion] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [diagnosis, setDiagnosis] = useState<AiDiagnosis | null>(null);
@@ -41,14 +37,15 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
   const [isExecutingTool, setIsExecutingTool] = useState<boolean>(false);
 
   const activeProj = projects.find((p) => p.id === selectedProjectId) || projects[0];
+  const lockedProject = !!initialProject;
 
   const handleRunDiagnosis = async (questionText?: string) => {
-    const q = questionText || customQuestion || `Why is ${activeProj.name} reporting status ${activeProj.status}?`;
+    const q = questionText || customQuestion || `Why is ${activeProj.name} failing?`;
     setIsLoading(true);
     setDiagnosis(null);
     playHapticAudio('beep');
 
-    const res = await askAiDiagnosis(selectedProjectId, q, provider);
+    const res = await askAiDiagnosis(selectedProjectId, q, 'opencode');
     setDiagnosis(res);
     setIsLoading(false);
   };
@@ -65,10 +62,8 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
 
   // Preset diagnostic queries
   const presetQueries = [
-    { label: 'Diagnose Degradation & 502', text: `Why did ${activeProj.name} return HTTP 502 / health check fail?` },
-    { label: 'Check DB Connection Pool', text: `Check database connection pool metrics and worker latencies for ${activeProj.name}` },
-    { label: 'Audit Memory & CPU Baseline', text: `Analyze process memory and CPU pressure on ${activeProj.name}` },
-    { label: 'Verify Pre-Deploy Safety', text: `Is ${activeProj.name} safe to deploy without downtime?` },
+    { label: 'Why is it failing?', text: `Why is ${activeProj.name} failing its health checks?` },
+    { label: 'Safe to deploy?', text: `Is ${activeProj.name} safe to deploy right now?` },
   ];
 
   return (
@@ -81,101 +76,42 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold flex items-center gap-2">
-                <span>AI Ops Diagnostic Engine</span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-                  Explain → Propose → Execute
+              <h2 className="text-base font-bold flex items-center gap-2 flex-wrap">
+                <span>AI Doctor</span>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-normal">
+                  live · {diagnosis?.provider === 'groq' ? 'Qwen' : 'OpenCode'}
                 </span>
               </h2>
               <p className="text-xs opacity-75">
-                Structured root-cause diagnosis from live `/proc` metrics, process memory, and tail logs.
+                Checks {activeProj.name}'s health and recent logs, then suggests a fix.
               </p>
             </div>
           </div>
 
-          {/* Target Project Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono opacity-70">Target:</span>
-            <select
-              value={selectedProjectId}
-              onChange={(e) => {
-                setSelectedProjectId(e.target.value);
-                setDiagnosis(null);
-              }}
-              className="bg-black/20 dark:bg-white/10 border border-current/20 rounded px-3 py-1.5 text-xs font-mono cursor-pointer"
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id} className="bg-slate-900 text-slate-100">
-                  {p.name} ({p.status})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* AI Provider Switcher (Tier 1 Integration) */}
-        <div className="pt-2 border-t border-current/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-wrap text-xs font-mono">
-            <span className="opacity-60 flex items-center gap-1">
-              <Brain className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Provider:</span>
-            </span>
-
-            <button
-              onClick={() => setProvider('claude')}
-              className={`px-2.5 py-1 rounded transition-all ${
-                provider === 'claude'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'bg-current/10 hover:bg-current/15'
-              }`}
-            >
-              Claude 3.7 Sonnet
-            </button>
-
-            <button
-              onClick={() => setProvider('ollama')}
-              className={`px-2.5 py-1 rounded transition-all flex items-center gap-1 ${
-                provider === 'ollama'
-                  ? 'bg-emerald-500 text-slate-950 font-bold'
-                  : 'bg-current/10 hover:bg-current/15'
-              }`}
-              title="Runs completely offline on local Termux box! (llama3.1:8b)"
-            >
-              <Cpu className="w-3 h-3" />
-              <span>Ollama (Local Offline)</span>
-            </button>
-
-            <button
-              onClick={() => setProvider('opencode')}
-              className={`px-2.5 py-1 rounded transition-all ${
-                provider === 'opencode'
-                  ? 'bg-cyan-500 text-slate-950 font-bold'
-                  : 'bg-current/10 hover:bg-current/15'
-              }`}
-            >
-              OpenCode CLI
-            </button>
-
-            <button
-              onClick={() => setProvider('codex')}
-              className={`px-2.5 py-1 rounded transition-all ${
-                provider === 'codex'
-                  ? 'bg-violet-500 text-white font-bold'
-                  : 'bg-current/10 hover:bg-current/15'
-              }`}
-            >
-              Codex (OpenAI)
-            </button>
-          </div>
-
-          <div className="text-[11px] font-mono opacity-60">
-            {provider === 'ollama' ? 'Model: llama3.1:8b @ localhost:11434' : 'Cloud Endpoint via Secure Proxy'}
-          </div>
+          {/* Target Project Selector (only when opened standalone) */}
+          {!lockedProject && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono opacity-70">Service:</span>
+              <select
+                value={selectedProjectId}
+                onChange={(e) => {
+                  setSelectedProjectId(e.target.value);
+                  setDiagnosis(null);
+                }}
+                className="bg-black/20 dark:bg-white/10 border border-current/20 rounded px-3 py-1.5 text-xs font-mono cursor-pointer"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-slate-900 text-slate-100">
+                    {p.name} ({p.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Quick Query Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono no-scrollbar">
-          <span className="opacity-50 text-[11px] whitespace-nowrap">Presets:</span>
           {presetQueries.map((pq, idx) => (
             <button
               key={idx}
@@ -195,7 +131,7 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
         <div className="flex items-center gap-2">
           <input
             type="text"
-            placeholder={`Ask diagnosis about ${activeProj.name} (e.g. why 502 on /health, check log line 10:30)...`}
+            placeholder={`Ask about ${activeProj.name}...`}
             value={customQuestion}
             onChange={(e) => setCustomQuestion(e.target.value)}
             onKeyDown={(e) => {
@@ -212,12 +148,12 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
             {isLoading ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Diagnosing...</span>
+                <span>Checking...</span>
               </>
             ) : (
               <>
                 <Send className="w-3.5 h-3.5" />
-                <span>Diagnose</span>
+                <span>Ask</span>
               </>
             )}
           </button>
@@ -228,15 +164,15 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
       {!diagnosis && !isLoading && (
         <div className="p-10 border border-dashed rounded-xl text-center space-y-3 opacity-80">
           <Brain className="w-10 h-10 mx-auto text-amber-500 animate-pulse" />
-          <h3 className="font-bold text-sm">No Diagnosis Ran Yet</h3>
+          <h3 className="font-bold text-sm">Not checked yet</h3>
           <p className="text-xs max-w-md mx-auto opacity-70">
-            Click one of the presets above or type a custom question to inspect status, parse recent logs with RAG, and produce structured remediation commands.
+            Takes about a minute — the AI reads {activeProj.name}'s live health and logs before answering.
           </p>
           <button
             onClick={() => handleRunDiagnosis()}
             className="px-4 py-2 rounded bg-amber-500 text-slate-950 font-bold text-xs"
           >
-            Run Auto-Diagnosis on {activeProj.name}
+            Check {activeProj.name}
           </button>
         </div>
       )}
@@ -254,24 +190,35 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
                     : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                 }`}
               >
-                Severity: {diagnosis.severity}
+                {diagnosis.severity === 'high' ? 'Urgent' : diagnosis.severity === 'medium' ? 'Watch' : 'Fine'}
               </span>
 
               <span className="font-mono text-xs opacity-70">
-                Confidence: {(diagnosis.confidence * 100).toFixed(0)}%
+                {(diagnosis.confidence * 100).toFixed(0)}% sure
               </span>
 
-              <span className="font-mono text-xs opacity-60">Provider: {diagnosis.provider}</span>
+              {diagnosis.aiLive === false ? (
+                <span
+                  className="font-mono text-[11px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  title={diagnosis.aiError || 'AI unavailable'}
+                >
+                  offline summary{diagnosis.aiError ? ` (${diagnosis.aiError})` : ''}
+                </span>
+              ) : (
+                <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  live answer
+                </span>
+              )}
             </div>
 
-            <div className="text-xs font-mono opacity-60">Generated: {diagnosis.timestamp}</div>
+            <div className="text-xs font-mono opacity-60">{diagnosis.timestamp}</div>
           </div>
 
           {/* Likely Cause Callout */}
           <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 space-y-1">
             <div className="flex items-center gap-2 text-amber-500 font-bold text-xs uppercase tracking-wider font-mono">
               <AlertTriangle className="w-4 h-4" />
-              <span>Likely Root Cause</span>
+              <span>Likely cause</span>
             </div>
             <p className="text-sm font-semibold leading-relaxed">{diagnosis.likelyCause}</p>
           </div>
@@ -280,9 +227,8 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Left: Gathered Evidence (Log RAG & Telemetry) */}
             <div className="space-y-3">
-              <h4 className="font-mono text-xs uppercase tracking-wider font-bold opacity-75 flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Grounded Evidence Spans</span>
+              <h4 className="font-mono text-xs uppercase tracking-wider font-bold opacity-75">
+                What I saw
               </h4>
               <ul className="space-y-2">
                 {diagnosis.evidence.map((ev, idx) => (
@@ -298,9 +244,8 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
 
             {/* Right: Remediation Proposals */}
             <div className="space-y-3">
-              <h4 className="font-mono text-xs uppercase tracking-wider font-bold opacity-75 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Proposed Action Plan</span>
+              <h4 className="font-mono text-xs uppercase tracking-wider font-bold opacity-75">
+                What to do
               </h4>
               <ul className="space-y-2">
                 {diagnosis.recommendedActions.map((rec, idx) => (
@@ -320,12 +265,11 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
           <div className="pt-4 border-t border-current/10 space-y-3">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <h4 className="font-mono text-xs uppercase tracking-wider font-bold flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  <span>Execute Approved Remediation Tools</span>
+                <h4 className="font-mono text-xs uppercase tracking-wider font-bold">
+                  Fix it
                 </h4>
                 <p className="text-xs opacity-70">
-                  AI tools operate strictly under scoped allowlists with audit logging. No raw arbitrary shell is permitted.
+                  Every fix is logged. Nothing runs without your tap.
                 </p>
               </div>
 
@@ -350,12 +294,12 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
                 {executedTools.includes('restart_project') ? (
                   <>
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>restart_project (Executed)</span>
+                    <span>Restarted</span>
                   </>
                 ) : (
                   <>
                     <RotateCw className="w-3.5 h-3.5" />
-                    <span>Run Tool: restart_project()</span>
+                    <span>Restart service</span>
                   </>
                 )}
               </button>
@@ -369,7 +313,7 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
                 }`}
               >
                 <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Run Tool: run_safe_command("npm run build")</span>
+                <span>Run build check</span>
               </button>
 
               {/* Tool 3: deploy_project */}
@@ -381,7 +325,7 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
                 }`}
               >
                 <Play className="w-3.5 h-3.5 text-amber-400" />
-                <span>Run Tool: deploy_project()</span>
+                <span>Deploy latest</span>
               </button>
             </div>
           </div>
@@ -389,7 +333,7 @@ export const AiAssistantModal: React.FC<AiAssistantProps> = ({ initialProject })
           {/* Raw LLM Diagnostics Output Inspector */}
           <div className="space-y-1 pt-2">
             <span className="text-[10px] font-mono uppercase tracking-wider opacity-60">
-              Raw Provider Output Stream
+              Full answer
             </span>
             <pre className="p-3 rounded bg-black/40 text-slate-300 font-mono text-xs whitespace-pre-wrap max-h-40 overflow-y-auto">
               {diagnosis.rawAnalysis}

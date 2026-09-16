@@ -1,10 +1,22 @@
 // server-dashboard API v1 per docs/api-v1.md + architecture.md (stdlib only).
 // Registry + auth + monitor + logs + process control + safe exec + incidents +
 // deployments + AI/MCP stubs + static public/. Run: node server/index.js (:3001)
+// Local secrets live in server/.env (gitignored), loaded below.
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
+
+// minimal .env loader (KEY=VALUE, skips blanks/# comments, never logs values)
+try {
+  const envFile = path.join(__dirname, ".env");
+  if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, "utf8").split("\n")) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^(["'])(.*)\1$/, "$2");
+    }
+  }
+} catch { /* env best-effort */ }
 
 const store = require("./core/store");
 const auth = require("./core/auth");
@@ -29,6 +41,7 @@ function validateProject(p, isNew) {
   }
   if (p.location?.type === "local" && p.location?.cwd) {
     const roots = pm.ALLOWED_ROOTS;
+    if (p.location.cwd.startsWith("~/")) p.location.cwd = path.join(require("os").homedir(), p.location.cwd.slice(2));
     let ok = false;
     try { const rp = fs.realpathSync(p.location.cwd); ok = roots.some((r) => { try { const rr = fs.realpathSync(r); return rp === rr || rp.startsWith(rr + "/"); } catch { return false; } }); }
     catch { ok = false; }
@@ -55,6 +68,42 @@ function body(req) {
 }
 function actor(req) { return req.headers["x-actor"] ? String(req.headers["x-actor"]).slice(0, 40) : "token"; }
 
+// `ai` terminal command: talk to the dashboard's AI about a service.
+// Never spawns a shell — calls the same diagnose/autoheal core as the UI.
+async function aiTerminal(b, res, req) {
+  const args = (b.args || []).map(String);
+  const sub = args[0];
+  const known = () => { try { return store.read("projects.json", { projects: [] }).projects; } catch { return []; } };
+  const usage = "usage:\n  ai ask <service> <question>  - diagnose (live, ~1 min)\n  ai fix <service>             - diagnose + safe auto-fix attempt";
+  if (sub !== "ask" && sub !== "fix") return send(res, 200, { exitCode: 0, stdout: usage, stderr: "" });
+  const id = args[1] || "";
+  const pr = known().find((x) => x.id === id);
+  if (!pr) return send(res, 200, { exitCode: 1, stdout: "", stderr: `unknown service "${id}". Known: ${known().map((x) => x.id).join(", ") || "none"}` });
+  try {
+    const st = monitor.state[id] || {};
+    if (sub === "ask") {
+      const q = args.slice(2).join(" ");
+      const ai = require("./core/ai");
+      const d = await ai.diagnose({ project: pr, status: st, question: q });
+      try { logs.append(id, `[ai] terminal ask: ${q.slice(0, 200)} -> ${String(d.likelyCause).slice(0, 200)}`); } catch {}
+      const out = `${d.aiLive ? "[live answer]" : "[offline summary]"}\n${d.likelyCause}\n\nWhat I saw:\n${(d.evidence || []).map((e) => "- " + e).join("\n")}\n\nWhat to do:\n${(d.recommendedActions || []).map((a, i) => `${i + 1}. ${a}`).join("\n")}`;
+      audit.append({ actor: actor(req), projectId: id, action: "ai_fix_execute", args: { tool: "terminal_ask", q: q.slice(0, 200) }, result: "success" });
+      return send(res, 200, { exitCode: 0, stdout: out.slice(0, 8000), stderr: "" });
+    }
+    const heal = require("./core/autoheal");
+    const r = await heal.maybeAutoHeal(pr, st.status ? st : { ...st, status: st.status || "DOWN" });
+    audit.append({ actor: actor(req), projectId: id, action: "ai_fix_execute", args: { tool: "terminal_fix" }, result: "success" });
+    if (!r) return send(res, 200, { exitCode: 0, stdout: `${pr.name}: no auto-fix applied (healthy, cooling down, or needs you).`, stderr: "" });
+    return send(res, 200, {
+      exitCode: 0,
+      stdout: r.fixed ? `${pr.name}: diagnosed and auto-restarted. Watch the next checks.` : `${pr.name}: diagnosed, no safe auto-fix (${r.reason || "waiting for operator"}).`,
+      stderr: "",
+    });
+  } catch (e) {
+    return send(res, 200, { exitCode: 1, stdout: "", stderr: String(e.message).slice(0, 300) });
+  }
+}
+
 // monitor loop over registry
 monitor.startLoop(() => getRegistry().projects.filter((p) => p.enabled !== false));
 
@@ -79,14 +128,65 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ ok: true }));
     }
 
-    // everything else needs auth (share token = read-only GETs)
-    const isReadGet = req.method === "GET" && ["/api/projects", "/api/status", "/api/incidents", "/api/deploy"].some((x) => p === x || p.startsWith(x + "/") || p.startsWith("/api/logs/") || p.startsWith("/api/status/"));
-    if (!auth.isAuthed(req, { allowShareRead: isReadGet })) return send(res, 401, { error: { code: "FORBIDDEN", message: "auth required" } });
-    const readOnly = !!req.shareReadOnly;
-    if (readOnly && req.method !== "GET") return send(res, 403, { error: { code: "FORBIDDEN", message: "read-only token" } });
+    // only /api/* needs auth — the static frontend (login screen) is public
+    if (p.startsWith("/api/")) {
+      const isReadGet = req.method === "GET" && ["/api/projects", "/api/status", "/api/incidents", "/api/deploy"].some((x) => p === x || p.startsWith(x + "/") || p.startsWith("/api/logs/") || p.startsWith("/api/status/"));
+      if (!auth.isAuthed(req, { allowShareRead: isReadGet })) return send(res, 401, { error: { code: "FORBIDDEN", message: "auth required" } });
+      const readOnly = !!req.shareReadOnly;
+      if (readOnly && req.method !== "GET") return send(res, 403, { error: { code: "FORBIDDEN", message: "read-only token" } });
+    }
 
     // projects CRUD
     if (p === "/api/projects" && req.method === "GET") return send(res, 200, { projects: getRegistry().projects });
+    // inspect a local folder and auto-fill start command + port (read-only).
+    if (p === "/api/projects/inspect" && req.method === "GET") {
+      const rawPath = (u.searchParams.get("path") || "").trim();
+      const expand = (s) => s.startsWith("~/") ? path.join(require("os").homedir(), s.slice(2)) : s;
+      const abs = expand(rawPath);
+      if (!abs) return send(res, 200, { ok: false, error: "empty-path" });
+      let rp;
+      try {
+        rp = fs.realpathSync(abs);
+        if (!fs.statSync(rp).isDirectory()) return send(res, 200, { ok: false, error: "not-a-folder" });
+      } catch {
+        return send(res, 200, { ok: false, error: "not-found" });
+      }
+      const inside = pm.ALLOWED_ROOTS.some((r) => { try { const rr = fs.realpathSync(r); return rp === rr || rp.startsWith(rr + "/"); } catch { return false; } });
+      if (!inside) return send(res, 200, { ok: false, error: "outside-roots", roots: pm.ALLOWED_ROOTS });
+      const readCapped = (f, cap = 65536) => { try { const s = fs.readFileSync(path.join(rp, f), "utf8"); return s.slice(0, cap); } catch { return ""; } };
+      const pkgTxt = readCapped("package.json");
+      let pkg = null;
+      try { pkg = pkgTxt ? JSON.parse(pkgTxt) : null; } catch { /* ignore */ }
+      const det = { name: path.basename(rp), kind: "", description: "", command: "", args: [], port: 3000 };
+      if (pkg) {
+        const deps = { ...((pkg.dependencies) || {}), ...((pkg.devDependencies) || {}) };
+        const scripts = pkg.scripts || {};
+        det.description = String(pkg.description || "").slice(0, 200);
+        if (pkg.name && !/^(app|server|project|my-app)$/i.test(pkg.name)) det.name = String(pkg.name).slice(0, 40);
+        if (deps.next) { det.kind = "Next.js app"; det.command = "npm"; det.args = scripts.start ? ["run", "start"] : ["run", "dev"]; }
+        else if (deps.express || deps.fastify || deps.koa || deps.nestjs) { det.kind = "Node.js API"; det.command = "npm"; det.args = scripts.start ? ["run", "start"] : ["run", "dev"]; }
+        else if (deps.react || deps.vite) { det.kind = "Vite app"; det.command = "npm"; det.args = scripts.dev ? ["run", "dev"] : ["run", "start"]; }
+        else if (scripts.start || scripts.dev) { det.kind = "Node.js app"; det.command = "npm"; det.args = scripts.start ? ["run", "start"] : ["run", "dev"]; }
+        // hunt for the port in likely server files + .env
+        const envPort = (readCapped(".env", 8192).match(/^\s*PORT\s*=\s*(\d{2,5})/m) || [])[1];
+        let filePort = "";
+        for (const f of [pkg.main || "", "server.js", "index.js", "src/index.js", "src/server.js", "app.js"]) {
+          if (!f) continue;
+          const t = readCapped(f);
+          if (!t) continue;
+          const m = t.match(/\.listen\(\s*(\d{2,5})/) || t.match(/PORT\s*\|\|\s*(\d{2,5})/) || t.match(/port\s*[:=]\s*(\d{2,5})/i);
+          if (m) { filePort = m[1]; break; }
+        }
+        det.port = Number(envPort || filePort || 3000);
+      } else {
+        const reqTxt = readCapped("requirements.txt", 16384);
+        if (/fastapi|uvicorn/i.test(reqTxt)) { det.kind = "Python API (FastAPI)"; det.command = "python3"; det.args = ["-m", "uvicorn", "main:app"]; det.port = 8000; }
+        else if (/flask/i.test(reqTxt) || fs.existsSync(path.join(rp, "app.py"))) { det.kind = "Python app"; det.command = "python3"; det.args = ["app.py"]; det.port = 5000; }
+      }
+      if (!det.command) return send(res, 200, { ok: false, error: "unknown-type", folder: det.name });
+      det.healthUrl = `http://localhost:${det.port}/health`;
+      return send(res, 200, { ok: true, folder: rp, detection: det });
+    }
     if (p === "/api/projects/detect" && req.method === "POST") {
       const b = await body(req);
       const files = b.files || {};
@@ -122,6 +222,11 @@ const server = http.createServer(async (req, res) => {
       reg.projects.push(proj);
       store.write("projects.json", reg);
       audit.append({ actor: actor(req), action: "project_create", args: { id }, result: "success" });
+      // start health-checking it right away (no restart needed)
+      try {
+        const getProjects = () => getRegistry().projects.filter((x) => x.enabled !== false);
+        void monitor.check(proj).then(() => monitor.arm(proj, getProjects)).catch(() => {});
+      } catch { /* monitor best-effort */ }
       return send(res, 201, { id });
     }
     let m = p.match(/^\/api\/projects\/([^/]+)$/);
@@ -279,16 +384,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     // agents seam (Phase 6): local registry agents + remote heartbeats + self stats
+    // portable: os module works on Linux/macOS/Windows (no /proc dependency).
     if (p === "/api/agents" && req.method === "GET") {
       const reg = getRegistry();
       const remote = store.read("agents-remote.json", []);
+      const os = require("os");
       let self = { id: "local", status: "connected", version: "v0.1.0" };
       try {
-        const mem = fs.readFileSync("/proc/meminfo", "utf8");
-        const total = Number((mem.match(/MemTotal:\s+(\d+)/) || [])[1] || 0) / 1024;
-        const avail = Number((mem.match(/MemAvailable:\s+(\d+)/) || [])[1] || 0) / 1024;
-        self = { ...self, hostname: require("os").hostname(), platform: `${require("os").platform()}/${require("os").arch()}`, memUsedMB: Math.round(total - avail), memTotalMB: Math.round(total), projectCount: reg.projects.length };
-      } catch { /* non-linux */ }
+        const total = os.totalmem() / 1048576, free = os.freemem() / 1048576;
+        self = { ...self, hostname: os.hostname(), platform: `${os.platform()}/${os.arch()}`, memUsedMB: Math.round(total - free), memTotalMB: Math.round(total), projectCount: reg.projects.length };
+      } catch { /* ignore */ }
       return send(res, 200, { agents: [...reg.agents.map((a) => ({ ...a, ...(a.id === "local" ? self : { status: "unknown" }) })), ...remote] });
     }
     if (p === "/api/agents/heartbeat" && req.method === "POST") {
@@ -318,18 +423,28 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     }
 
-    // safe exec (allowlist, cwd jail, 30s timeout, 100KB cap, audit)
-    m = p.match(/^\/api\/exec\/([^/]+)$/);
+    // safe exec: per-service folder (/api/exec/:id) or whole box (/api/exec,
+    // runs in the home folder). Allowlist, no shell, 30s cap, audited.
+    // `ai` is a built-in command (intercepted, never spawned):
+    //   ai ask <service> <question>  -> live diagnosis in the terminal
+    //   ai fix <service>             -> diagnose + safe auto-fix attempt
+    m = p.match(/^\/api\/exec(?:\/([^/]+))?$/);
     if (m && req.method === "POST") {
-      const pr = getProject(m[1]);
-      if (!pr) return send(res, 404, { error: { code: "NOT_FOUND", message: "project" } });
+      const boxMode = !m[1];
+      const pr = boxMode ? null : getProject(m[1]);
+      if (!boxMode && !pr) return send(res, 404, { error: { code: "NOT_FOUND", message: "project" } });
       const b = await body(req);
-      const ALLOW = new Set(["npm", "node", "git", "ls", "cat", "python3", "pip", "curl", "ollama", "uvicorn"]);
+      if (b.cmd === "ai") return aiTerminal(b, res, req);
+      // Read-only-friendly allowlist; shell metachars rejected (no pipes/redirects).
+      // df/free/ps/pwd/uptime exist on unix; on Windows use node/npm/git/python.
+      const ALLOW = new Set(["npm", "node", "git", "ls", "cat", "mkdir", "python3", "python", "pip", "curl", "ollama", "uvicorn", "df", "free", "ps", "pwd", "echo", "uptime", "du", "whoami", "hostname", "lsb_release"]);
       if (!ALLOW.has(b.cmd) || /[&;|`$(){}<>\n]/.test(`${b.cmd} ${(b.args || []).join(" ")}`)) {
-        audit.append({ actor: actor(req), projectId: m[1], action: "exec_command", args: { cmd: b.cmd }, result: "denied" });
+        audit.append({ actor: actor(req), projectId: boxMode ? "box" : m[1], action: "exec_command", args: { cmd: b.cmd }, result: "denied" });
         return send(res, 403, { error: { code: "FORBIDDEN", message: "command not allowlisted" } });
       }
-      const cwd = pr.location?.cwd;
+      const cwd = boxMode
+        ? (process.env.DASHBOARD_HOME || require("os").homedir())
+        : pr.location?.cwd;
       if (!cwd) return send(res, 400, { error: { code: "VALIDATION", message: "external has no cwd" } });
       const { spawn } = require("child_process");
       const out = await new Promise((resolve) => {
@@ -343,7 +458,7 @@ const server = http.createServer(async (req, res) => {
         child.on("error", (e) => { if (!done) { done = true; clearTimeout(kill); resolve({ exitCode: 1, stdout, stderr: String(e.message).slice(0, 1000), truncated: false }); } });
         child.on("close", (code) => { if (!done) { done = true; clearTimeout(kill); resolve({ exitCode: code ?? 1, stdout: stdout.slice(0, 100 * 1024), stderr: stderr.slice(0, 100 * 1024), truncated: stdout.length >= 100 * 1024 }); } });
       });
-      audit.append({ actor: actor(req), projectId: m[1], action: "exec_command", args: { cmd: b.cmd, args: b.args }, result: "success" });
+      audit.append({ actor: actor(req), projectId: boxMode ? "box" : m[1], action: "exec_command", args: { cmd: b.cmd, args: b.args }, result: "success" });
       return send(res, 200, out);
     }
 
@@ -354,29 +469,14 @@ const server = http.createServer(async (req, res) => {
       const st = monitor.state[m[1]] || {};
       const pr = getProject(m[1]);
       if (m[2] === "ask") {
-        const retrieval = require("./core/retrieval");
-        const memory = require("./core/memory");
-        const q = b.question || st.error || "";
-        const spans = retrieval.retrieve(m[1], q, 6000);
-        const mem = memory.recall(m[1], q, 3);
-        const recentDeps = store.read("deployments.json", []).filter((d) => d.projectId === m[1]).slice(0, 2);
-        const pastFixes = mem.similar.map((x) => `${x.cause} -> ${x.fixThatWorked || "unresolved"}`);
-        return send(res, 200, {
-          severity: st.status === "DOWN" ? "high" : st.status === "DEGRADED" ? "medium" : "low",
-          likelyCause: st.status === "DOWN" ? "connection refused — upstream not listening" : st.status === "DEGRADED" ? "slow/upstream latency or failing assert" : "healthy",
-          confidence: spans.length ? 0.7 : 0.5,
-          evidence: [
-            `status=${st.status || "unknown"}`,
-            `latency=${st.latencyMs || 0}ms`,
-            ...spans.slice(0, 3).map((s) => `log: ${s.slice(0, 220)}`),
-            ...recentDeps.map((d) => `deploy ${d.id}@${d.sha} ${d.status}`),
-          ],
-          pastFixes,
-          runbook: mem.runbook,
-          recommendedActions: ["check evidence spans", "compare with past fixes", "trigger redeploy if deploy-related"],
-          commands: [], safeToAutoFix: false,
-          provider: (auth.loadSettings().aiProvider || "opencode"),
-        });
+        if (!pr) return send(res, 404, { error: { code: "NOT_FOUND", message: "project" } });
+        try {
+          const ai = require("./core/ai");
+          const d = await ai.diagnose({ project: pr, status: st, question: b.question || st.error || "" });
+          return send(res, 200, { ...d, provider: d.provider || "opencode" });
+        } catch (e) {
+          return err(res, e);
+        }
       }
       // execute: confirm-gated, manifest-validated, audited
       const manifest = ["restart_project", "run_safe_command", "deploy_project", "ack_incident", "resolve_incident"];
@@ -427,15 +527,19 @@ const server = http.createServer(async (req, res) => {
     // settings + token rotation
     if (p === "/api/settings" && req.method === "GET") {
       const s = auth.loadSettings();
-      return send(res, 200, { aiProvider: s.aiProvider || "opencode", alertChannels: s.alertChannels || {}, tokenCreatedAt: s.createdAt || null });
+      return send(res, 200, { aiProvider: s.aiProvider || "opencode", aiAutoHeal: s.aiAutoHeal !== false, alertChannels: s.alertChannels || {}, tokenCreatedAt: s.createdAt || null });
     }
     if (p === "/api/settings" && req.method === "PATCH") {
       const b = await body(req);
       const s = auth.loadSettings();
       if (b.aiProvider) s.aiProvider = b.aiProvider;
+      if (typeof b.aiAutoHeal === "boolean") s.aiAutoHeal = b.aiAutoHeal;
       if (b.alertChannels) s.alertChannels = b.alertChannels;
       auth.saveSettings(s);
       return send(res, 200, { ok: true });
+    }
+    if (p === "/api/ai/auto-state" && req.method === "GET") {
+      return send(res, 200, { auto: store.read("ai-auto.json", {}) });
     }
     if (p === "/api/auth/rotate" && req.method === "POST") {
       const t = auth.rotate();

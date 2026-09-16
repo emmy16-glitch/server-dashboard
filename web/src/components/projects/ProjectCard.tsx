@@ -2,6 +2,7 @@ import React from 'react';
 import { Project } from '../../types/dashboard';
 import { useDashboard } from '../../context/DashboardContext';
 import { getThemeClasses } from '../../utils/themeStyles';
+import { timeAgo } from '../../utils/time';
 import {
   Play,
   Square,
@@ -47,6 +48,17 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
   const theme = getThemeClasses(design);
   const isLocal = project.location.type === 'local';
   const isStarting = project.status === 'STARTING';
+  const statusLabel =
+    project.status === 'UP' ? 'Up'
+    : project.status === 'DEGRADED' ? 'Needs attention'
+    : project.status === 'DOWN' ? 'Down'
+    : project.status === 'STOPPED' ? 'Stopped' : 'Starting';
+  const providerLabel =
+    project.location.provider === 'vercel' ? 'Vercel'
+    : project.location.provider === 'railway' ? 'Railway'
+    : project.location.provider === 'render' ? 'Render'
+    : project.location.provider === 'custom' ? 'Cloud'
+    : project.location.provider || 'Cloud';
 
   // Status color helpers
   const getBadgeClass = () => {
@@ -104,7 +116,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider ${getBadgeClass()}`}>
-                ● {project.status}
+                ● {statusLabel}
               </span>
 
               {getJapaneseStamp()}
@@ -114,21 +126,15 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                 {isLocal ? (
                   <>
                     <Radio className="w-3 h-3 text-cyan-400" />
-                    <span>local :{project.runtime.port}</span>
+                    <span>Local · :{project.runtime.port}</span>
                   </>
                 ) : (
                   <>
                     <Globe className="w-3 h-3 text-violet-400" />
-                    <span>ext ({project.location.provider || 'vercel'})</span>
+                    <span>{providerLabel}</span>
                   </>
                 )}
               </span>
-
-              {project.template && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-current/10 opacity-60">
-                  {project.template}
-                </span>
-              )}
             </div>
 
             <h3
@@ -194,13 +200,13 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
               <span className="text-[10px] opacity-60 block flex items-center gap-1">
                 <Cpu className="w-3 h-3 text-cyan-400" /> CPU
               </span>
-              <span className="font-semibold">{project.process.cpuPct.toFixed(1)}%</span>
+              <span className="font-semibold">{(project.process?.cpuPct ?? 0).toFixed(1)}%</span>
             </div>
             <div>
               <span className="text-[10px] opacity-60 block flex items-center gap-1">
                 <HardDrive className="w-3 h-3 text-amber-400" /> RAM
               </span>
-              <span className="font-semibold">{project.process.memMB.toFixed(0)} MB</span>
+              <span className="font-semibold">{(project.process?.memMB ?? 0).toFixed(0)} MB</span>
             </div>
             <div>
               <span className="text-[10px] opacity-60 block flex items-center gap-1">
@@ -208,10 +214,10 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
               </span>
               <span
                 className={`font-semibold ${
-                  project.process.restarts > 0 ? 'text-amber-500 font-bold' : ''
+                  (project.process?.restarts ?? 0) > 0 ? 'text-amber-500 font-bold' : ''
                 }`}
               >
-                {project.process.restarts} / {project.runtime.maxRestarts || 5}
+                {project.process?.restarts ?? 0} / {project.runtime?.maxRestarts || 5}
               </span>
             </div>
           </div>
@@ -229,7 +235,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                 {project.source.lastCommitMessage}
               </span>
             </div>
-            <span className="opacity-50 text-[10px] flex-shrink-0">({project.source.branch})</span>
           </div>
         )}
 
@@ -237,12 +242,12 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px] font-mono opacity-60">
             <span className="flex items-center gap-1">
-              <Activity className="w-3 h-3" /> Check History (30s loop)
+              <Activity className="w-3 h-3" /> Health checks
             </span>
-            <span>Last: {project.lastChecked}</span>
+            <span>Checked {timeAgo(project.lastChecked)}</span>
           </div>
           <div className="flex items-end gap-1 h-6 pt-1">
-            {project.history.slice(-12).map((h, idx) => {
+            {(project.history ?? []).slice(-12).map((h, idx) => {
               const height = Math.min(100, Math.max(15, (h.latencyMs / 400) * 100));
               let barColor = 'bg-emerald-500';
               if (h.code >= 500 || h.error) barColor = 'bg-rose-500 animate-pulse';
@@ -307,10 +312,10 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
             <button
               onClick={() => runHealthCheck(project.id)}
               className={`p-1.5 px-2 text-xs flex items-center gap-1 ${theme.buttonSecondary}`}
-              title="Trigger instant HTTP health check"
+              title="Check the site right now"
             >
               <RotateCw className="w-3 h-3" />
-              <span className="text-[11px]">Ping</span>
+              <span className="text-[11px]">Check</span>
             </button>
           </div>
         )}

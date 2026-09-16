@@ -151,7 +151,9 @@ export interface AiDiagnosis {
   commands: string[];
   safeToAutoFix: boolean;
   rawAnalysis: string;
-  provider: 'opencode' | 'codex' | 'claude' | 'ollama';
+  provider: 'opencode' | 'codex' | 'claude' | 'ollama' | 'groq';
+  aiLive?: boolean;
+  aiError?: string;
 }
 
 export interface AuditRecord {

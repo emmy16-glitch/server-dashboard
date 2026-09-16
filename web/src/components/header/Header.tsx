@@ -44,18 +44,17 @@ export const Header: React.FC<HeaderProps> = ({
 
   const totalCount = projects.length;
   const upCount = projects.filter((p) => p.status === 'UP').length;
-  const degradedCount = projects.filter((p) => p.status === 'DEGRADED').length;
-  const downCount = projects.filter((p) => p.status === 'DOWN').length;
+  const attentionCount = projects.filter((p) => p.status === 'DEGRADED' || p.status === 'DOWN').length;
 
   const tabs = [
-    { id: 'projects', label: 'Control Matrix', icon: Server, count: totalCount },
-    { id: 'incidents', label: 'Incidents & Recovery', icon: AlertTriangle, badge: activeIncidentsCount > 0 ? activeIncidentsCount : undefined },
-    { id: 'deploys', label: 'Deploy Engine', icon: GitCommit },
-    { id: 'terminal', label: 'Safe Terminal', icon: Terminal },
-    { id: 'ai-ops', label: 'AI Diagnosis', icon: Sparkles },
-    { id: 'templates', label: '17 Templates', icon: FolderGit2 },
-    { id: 'agents', label: 'Multi-Server Agents', icon: Radio },
-    { id: 'audit', label: 'Audit Trail', icon: ShieldCheck },
+    { id: 'projects', label: 'Services', icon: Server, count: totalCount },
+    { id: 'incidents', label: 'Incidents', icon: AlertTriangle, badge: activeIncidentsCount > 0 ? activeIncidentsCount : undefined },
+    { id: 'deploys', label: 'Deploys', icon: GitCommit },
+    { id: 'terminal', label: 'Terminal', icon: Terminal },
+    { id: 'ai-ops', label: 'AI Doctor', icon: Sparkles },
+    { id: 'templates', label: 'Templates', icon: FolderGit2 },
+    { id: 'agents', label: 'Agents', icon: Radio },
+    { id: 'audit', label: 'Audit', icon: ShieldCheck },
   ];
 
   return (
@@ -68,10 +67,10 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-xs bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                <span className="font-semibold">HOST: {hostAgent.hostname}</span>
+                <span className="font-semibold">HOST: {hostAgent?.hostname ?? 'connecting…'}</span>
               </div>
-              <span className="text-xs font-mono opacity-60">[{hostAgent.platform}]</span>
-              <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 opacity-70">
+              <span className="text-xs font-mono opacity-60">[{hostAgent?.platform ?? '…' }]</span>
+              <span className="hidden sm:inline text-xs font-mono px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 opacity-70">
                 Node v20.18 · No Docker / PM2 Required
               </span>
               {isReadOnlyMode && (
@@ -84,10 +83,9 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-baseline gap-3">
               <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
                 <span className={theme.accentText}>server-dashboard</span>
-                <span className="text-xs font-mono font-normal opacity-50">v1.0 (Phase 1-5 MVP)</span>
               </h1>
             </div>
-            <p className={`text-xs ${theme.subtext} max-w-2xl`}>
+            <p className={`text-xs ${theme.subtext} max-w-2xl hidden sm:block`}>
               One secure control plane for monitoring, deploying, debugging, and recovering all applications
               — Termux local processes + Vercel / Railway / Render URLs.
             </p>
@@ -95,21 +93,21 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Real-time Telemetry Cluster */}
           <div className="flex items-center gap-3 flex-wrap lg:justify-end">
-            {/* CPU & Memory Gauges */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded border border-current/10 bg-current/5 font-mono text-xs">
+            {/* CPU & Memory Gauges (desktop only — phone stays clean) */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded border border-current/10 bg-current/5 font-mono text-xs">
               <Cpu className="w-3.5 h-3.5 text-cyan-400" />
               <div>
                 <span className="opacity-60 text-[10px] block">CPU</span>
-                <span className="font-semibold">{hostAgent.cpuPct.toFixed(1)}%</span>
+                <span className="font-semibold">{(hostAgent?.cpuPct ?? 0).toFixed(1)}%</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded border border-current/10 bg-current/5 font-mono text-xs">
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded border border-current/10 bg-current/5 font-mono text-xs">
               <HardDrive className="w-3.5 h-3.5 text-amber-400" />
               <div>
                 <span className="opacity-60 text-[10px] block">RAM</span>
                 <span className="font-semibold">
-                  {(hostAgent.memUsedMB / 1024).toFixed(1)}G / {(hostAgent.memTotalMB / 1024).toFixed(1)}G
+                  {((hostAgent?.memUsedMB ?? 0) / 1024).toFixed(1)}G / {((hostAgent?.memTotalMB ?? 0) / 1024).toFixed(1)}G
                 </span>
               </div>
             </div>
@@ -118,9 +116,8 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-current/10 bg-current/5 font-mono text-xs">
               <Activity className="w-3.5 h-3.5 text-emerald-400" />
               <div className="flex items-center gap-2 text-[11px]">
-                <span className="text-emerald-500 font-bold">{upCount} UP</span>
-                {degradedCount > 0 && <span className="text-amber-500 font-bold animate-pulse">{degradedCount} DEG</span>}
-                {downCount > 0 && <span className="text-rose-500 font-bold">{downCount} DOWN</span>}
+                <span className="text-emerald-500 font-bold">{upCount} healthy</span>
+                {attentionCount > 0 && <span className="text-amber-500 font-bold animate-pulse">{attentionCount} need attention</span>}
               </div>
             </div>
 
@@ -134,15 +131,31 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded shadow-md transition-all ${theme.buttonPrimary}`}
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Register App</span>
+                <span>Add service</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Tactical Navigation Tabs */}
+        {/* Tactical Navigation Tabs: dropdown on phone, tabs on desktop */}
         <div className="mt-4 pt-2 border-t border-current/10 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
-          <nav className="flex items-center gap-1 flex-nowrap min-w-max">
+          <select
+            value={currentTab}
+            onChange={(e) => {
+              playHapticAudio('toggle');
+              setCurrentTab(e.target.value);
+            }}
+            className="md:hidden bg-black/15 dark:bg-white/10 border border-current/20 rounded px-2 py-2 text-xs font-medium cursor-pointer focus:outline-none max-w-[60vw]"
+          >
+            {tabs.map((tab) => (
+              <option key={tab.id} value={tab.id} className="bg-slate-900 text-slate-100">
+                {tab.label}
+                {tab.id === 'projects' ? ` (${totalCount})` : ''}
+                {tab.badge ? ` (${tab.badge})` : ''}
+              </option>
+            ))}
+          </select>
+          <nav className="hidden md:flex items-center gap-1 flex-nowrap min-w-max">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = currentTab === tab.id;

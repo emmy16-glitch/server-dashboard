@@ -13,15 +13,6 @@ import {
   TemplateItem,
   AiDiagnosis,
 } from '../types/dashboard';
-import {
-  INITIAL_PROJECTS,
-  INITIAL_INCIDENTS,
-  INITIAL_DEPLOYMENTS,
-  INITIAL_AUDIT_LOGS,
-  INITIAL_AGENTS,
-  INITIAL_TEMPLATES,
-  MOCK_PROJECT_LOGS,
-} from '../data/mockData';
 import { api } from '../lib/api';
 
 interface DashboardContextType {
@@ -54,9 +45,9 @@ interface DashboardContextType {
   setIsReadOnlyMode: (ro: boolean) => void;
   authToken: string;
   authed: boolean;
+  authChecked: boolean;
   login: (token: string) => Promise<boolean>;
   logout: () => void;
-  enterDemo: () => void;
   rotateAuthToken: () => void;
 
   // Actions
@@ -71,7 +62,11 @@ interface DashboardContextType {
   executeAiFix: (id: string, tool: string, args: Record<string, any>) => Promise<boolean>;
   acknowledgeIncident: (id: string, note?: string) => void;
   resolveIncident: (id: string, note?: string, fixSummary?: string) => void;
-  addNewProject: (proj: Partial<Project>) => void;
+  addNewProject: (proj: Partial<Project>) => Promise<boolean>;
+
+  // Add-service modal signal (so any screen can open it on the right choice)
+  addServiceSignal: { type: 'local' | 'external'; n: number } | null;
+  openAddService: (type: 'local' | 'external') => void;
 
   // Audio effects
   playHapticAudio: (sound: 'click' | 'alarm' | 'deploy' | 'beep' | 'toggle') => void;
@@ -83,28 +78,34 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [design, setDesign] = useState<DesignState>({
     material: 'glass',
-    composition: 'editorial',
+    composition: 'spacious',
     structure: 'swiss',
-    feeling: 'tactical',
+    feeling: 'precise',
     soundEnabled: true,
     scanlines: false,
   });
 
-  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [logs, setLogs] = useState<Record<string, string[]>>(MOCK_PROJECT_LOGS);
-  const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS);
-  const [deployments, setDeployments] = useState<DeploymentRecord[]>(INITIAL_DEPLOYMENTS);
-  const [auditLogs, setAuditLogs] = useState<AuditRecord[]>(INITIAL_AUDIT_LOGS);
-  const [agents, setAgents] = useState<AgentNode[]>(INITIAL_AGENTS);
-  const [templates, setTemplates] = useState<TemplateItem[]>(INITIAL_TEMPLATES);
+  const [logs, setLogs] = useState<Record<string, string[]>>({});
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [deployments, setDeployments] = useState<DeploymentRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([]);
+  const [agents, setAgents] = useState<AgentNode[]>([]);
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
 
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isReadOnlyMode, setIsReadOnlyMode] = useState<boolean>(false);
   const [authToken, setAuthToken] = useState<string>(() => api.getToken());
-  const [authed, setAuthed] = useState<boolean>(() => !!api.getToken());
+  const [authed, setAuthed] = useState<boolean>(false);
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>('Just now');
+  const [addServiceSignal, setAddServiceSignal] = useState<{ type: 'local' | 'external'; n: number } | null>(null);
+  const openAddService = useCallback((type: 'local' | 'external') => {
+    playHapticAudio('click');
+    setAddServiceSignal((s) => ({ type, n: (s?.n || 0) + 1 }));
+  }, []);
 
   const login = useCallback(async (token: string) => {
     const ok = await api.login(token.trim());
@@ -121,8 +122,35 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAuthed(false);
   }, []);
 
-  const enterDemo = useCallback(() => {
-    setAuthed(true); // no token: all server calls fall back to local mock
+  // On boot: a stored token means nothing until the server accepts it.
+  // Stale/invalid tokens land back on the login screen instead of a blank dashboard.
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      const stored = api.getToken();
+      if (stored) {
+        try {
+          const reg = await api.get<{ projects: unknown[] }>("/api/projects");
+          if (!dead) {
+            if (reg) {
+              setAuthed(true);
+            } else {
+              api.setToken("");
+              setAuthToken("");
+              setAuthed(false);
+            }
+          }
+        } catch {
+          if (!dead) {
+            api.setToken("");
+            setAuthToken("");
+            setAuthed(false);
+          }
+        }
+      }
+      if (!dead) setAuthChecked(true);
+    })();
+    return () => { dead = true; };
   }, []);
 
   const activeProject = projects.find((p) => p.id === activeProjectId) || null;
@@ -252,13 +280,14 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         notes: t.notes,
       })));
       const ag = await api.get<{ agents: AgentNode[] }>("/api/agents");
-      if (ag?.agents?.length) setAgents(ag.agents);
+      if (ag?.agents?.length) setAgents(ag.agents.map((a, i) => ({ ...a, isHost: (a as { isHost?: boolean }).isHost ?? i === 0 })));
       if (reg || st || inc || dep) setLastSyncTime(new Date().toLocaleTimeString());
     };
+    if (!authed) return;
     void sync();
     const t = setInterval(sync, 30000);
     return () => { dead = true; clearInterval(t); };
-  }, []);
+  }, [authed]);
 
   // Periodic simulated check & jitter
   useEffect(() => {
@@ -274,7 +303,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               ...p,
               currentLatency: newLat,
               history: [
-                ...p.history.slice(1),
+                ...(p.history ?? []).slice(1),
                 { ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), code: 200, latencyMs: newLat },
               ],
             };
@@ -583,7 +612,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               currentLatency: lat,
               lastChecked: 'Just now',
               history: [
-                ...p.history.slice(1),
+                ...(p.history ?? []).slice(1),
                 { ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), code: 200, latencyMs: lat },
               ],
             }
@@ -689,98 +718,81 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // Safe terminal command executor
+  // Real terminal: runs on the server inside the service's folder.
+  // The server enforces its own allowlist — no shell, no pipes, audited.
   const executeTerminal = async (
     id: string,
     commandStr: string,
-    isAdmin = false
+    _isAdmin = false
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
     if (isReadOnlyMode) {
-      return { exitCode: 1, stdout: '', stderr: 'Permission denied: Read-only mode active' };
+      return { exitCode: 1, stdout: '', stderr: 'Read-only mode is on — commands are locked.' };
     }
     playHapticAudio('click');
-    const trimmed = commandStr.trim();
-    const parts = trimmed.split(/\s+/);
-    const cmd = parts[0];
-    const args = parts.slice(1);
-
-    const safeAllowlist = ['npm', 'node', 'git', 'df', 'free', 'ls', 'cat', 'pwd', 'ps', 'curl', 'echo', 'uptime', 'python3', 'ollama'];
-
-    if (!isAdmin && !safeAllowlist.includes(cmd)) {
-      addAuditEntry('bearer_token', id, 'exec_command', `Denied command: "${trimmed}" outside safe allowlist`, 'denied');
-      return {
-        exitCode: 403,
-        stdout: '',
-        stderr: `403 FORBIDDEN: Command "${cmd}" is not in the Safe Mode allowlist. Enable Admin mode to run free shell commands (with audit).`,
-      };
+    const parts = commandStr.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return { exitCode: 1, stdout: '', stderr: 'Type a command first.' };
+    // Empty id = whole box (home folder). Otherwise the service's folder.
+    const path = id ? `/api/exec/${id}` : '/api/exec';
+    const token = api.getToken();
+    if (!token) {
+      return { exitCode: 1, stdout: '', stderr: 'You are signed out — log in again, then retry.' };
     }
-
-    addAuditEntry('bearer_token', id, 'exec_command', `Executed: ${trimmed} (${isAdmin ? 'ADMIN' : 'SAFE'})`, 'success');
-
-    // Simulate responses for common ops queries
-    if (cmd === 'df' || trimmed === 'df -h') {
-      return {
-        exitCode: 0,
-        stdout: `Filesystem      Size  Used Avail Use% Mounted on\n/dev/root       128G   43G   85G  34% /\ntmpfs           3.8G  1.2M  3.8G   1% /dev/shm\n/dev/sda1       960G  182G  778G  19% /mnt/storage`,
-        stderr: '',
-      };
+    let r: Response;
+    try {
+      r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ cmd: parts[0], args: parts.slice(1) }),
+      });
+    } catch {
+      return { exitCode: 1, stdout: '', stderr: 'Cannot reach the server at all — check the address and reload the page.' };
     }
-    if (cmd === 'free' || trimmed === 'free -m') {
-      return {
-        exitCode: 0,
-        stdout: `               total        used        free      shared  buff/cache   available\nMem:            7680        1840        4210         112        1630        5612\nSwap:           2048           0        2048`,
-        stderr: '',
-      };
+    if (r.status === 401 || r.status === 403) {
+      return { exitCode: 1, stdout: '', stderr: 'Server refused the saved sign-in (401) — sign out and sign in again.' };
     }
-    if (cmd === 'git' && args[0] === 'status') {
-      return {
-        exitCode: 0,
-        stdout: `On branch main\nYour branch is up to date with 'origin/main'.\n\nnothing to commit, working tree clean`,
-        stderr: '',
-      };
+    if (!r.ok) {
+      return { exitCode: 1, stdout: '', stderr: `Server error (${r.status}) — try again in a bit.` };
     }
-    if (cmd === 'git' && args[0] === 'log') {
-      return {
-        exitCode: 0,
-        stdout: `* a83f91d (HEAD -> main) refactor(worker): pool connection resilience & healthcheck probe\n* c42e19b fix(auth): sanitize JWT bearer header validation\n* 990f3ac feat(stream): experimental Opus chunk streaming pipeline`,
-        stderr: '',
-      };
-    }
-    if (cmd === 'ps' || trimmed.includes('grep node')) {
-      return {
-        exitCode: 0,
-        stdout: `USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND\nroot       24190 22.4  3.7 942180 291044 ?       Sl   10:35   0:42 node dist/server.js\nroot       18902  8.2 12.2 1420912 962560 ?      Sl   09:12   2:18 ollama serve`,
-        stderr: '',
-      };
-    }
-    if (cmd === 'npm' && args[0] === 'run' && args[1] === 'build') {
-      return {
-        exitCode: 0,
-        stdout: `> build\n> tsc -p tsconfig.json && vite build\n\nvite v7.3.2 building for production...\n✓ 42 modules transformed.\ndist/index.html   1.21 kB\ndist/assets/index.js   142.10 kB\n✓ built in 1.48s`,
-        stderr: '',
-      };
-    }
-    if (cmd === 'pwd') {
-      return {
-        exitCode: 0,
-        stdout: projects.find((p) => p.id === id)?.location.cwd || '/root/projects',
-        stderr: '',
-      };
-    }
-
-    return {
-      exitCode: 0,
-      stdout: `[safe-exec OK] Command completed successfully (${trimmed})\nExit code: 0`,
-      stderr: '',
-    };
+    const server = (await r.json()) as { exitCode: number; stdout: string; stderr: string };
+    addAuditEntry('bearer_token', id || 'box', 'exec_command', `Ran: ${commandStr.trim()} (exit ${server.exitCode})`, 'success');
+    return server;
   };
 
-  // AI Diagnosis (Explain -> Propose -> Execute)
+  // AI Diagnosis (server opencode-live first, local fallback)
   const askAiDiagnosis = async (
     id: string,
     question: string,
-    provider: 'opencode' | 'codex' | 'claude' | 'ollama' = 'claude'
+    provider: 'opencode' | 'codex' | 'claude' | 'ollama' = 'opencode'
   ): Promise<AiDiagnosis> => {
     playHapticAudio('beep');
+    const server = await api.get<{
+      severity: AiDiagnosis['severity']; likelyCause: string; confidence: number;
+      evidence: string[]; recommendedActions: string[]; commands?: string[];
+      fixTool?: string; safeToAutoFix: boolean; pastFixes?: string[];
+      rawAnalysis?: string; provider?: AiDiagnosis['provider']; aiLive?: boolean; aiError?: string;
+    }>(`/api/ai/${id}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    });
+    if (server) {
+      return {
+        id: `ai-diag-${Date.now()}`,
+        projectId: id,
+        timestamp: new Date().toLocaleTimeString(),
+        question,
+        provider: server.provider || 'opencode',
+        severity: server.severity,
+        likelyCause: server.likelyCause,
+        confidence: server.confidence,
+        evidence: [...(server.evidence || []), ...((server.pastFixes || []).map((f) => `past fix: ${f}`))],
+        recommendedActions: server.recommendedActions || [],
+        commands: server.commands || [],
+        safeToAutoFix: !!server.safeToAutoFix,
+        rawAnalysis: server.rawAnalysis || `${server.likelyCause}`,
+        aiLive: server.aiLive !== false,
+        aiError: server.aiError,
+      };
+    }
     const isDegraded = projects.find((p) => p.id === id)?.status === 'DEGRADED';
 
     await new Promise((r) => setTimeout(r, 1100));
@@ -818,6 +830,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       rawAnalysis: isDegraded
         ? `[AI DIAGNOSIS - ${provider.toUpperCase()}]\nTarget: ${id}\nRoot Cause: Database pool exhaustion during batch audio ingestion.\nThe supervisor detected 3 failed health probes. Memory is steady at 284 MB, meaning no memory leak, but Postgres clients became orphaned.\nRecommendation: Execute safe process restart to reset client pool and run health check gate.`
         : `[AI DIAGNOSIS - ${provider.toUpperCase()}]\nTarget: ${id}\nSystem is nominal. No anomalies detected in process memory or latency trends.`,
+      aiLive: false,
+      aiError: 'server unreachable',
     };
 
     return diagnosis;
@@ -826,6 +840,15 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const executeAiFix = async (id: string, tool: string, args: Record<string, any>): Promise<boolean> => {
     if (isReadOnlyMode) return false;
     playHapticAudio('deploy');
+    // Server-gated execute first (audited, manifest-validated)
+    const server = await api.get<{ ok: boolean }>(`/api/ai/${id}/execute`, {
+      method: 'POST',
+      body: JSON.stringify({ tool, args, confirm: true }),
+    });
+    if (server?.ok) {
+      addAuditEntry('ai-assistant:safe-tool', id, 'ai_fix_execute', `AI tool executed (server): ${tool} args: ${JSON.stringify(args)}`);
+      return true;
+    }
     addAuditEntry('ai-assistant:safe-tool', id, 'ai_fix_execute', `AI tool executed: ${tool} args: ${JSON.stringify(args)}`);
 
     if (tool === 'restart_project') {
@@ -895,54 +918,51 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     addAuditEntry('bearer_token:admin_ops', targetInc?.projectId || 'unknown', 'incident_resolve', `Resolved incident ${id}: ${note || 'Fixed'}`);
   };
 
-  const addNewProject = (newProj: Partial<Project>) => {
+  const addNewProject = async (newProj: Partial<Project>): Promise<boolean> => {
     playHapticAudio('click');
-    const slug = (newProj.name || 'new-app').toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const slug = (newProj.name || 'new-app').toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40) || 'new-app';
+    const isExternal = newProj.location?.type === 'external';
+    // Save to the server first so it survives reloads and gets health-checked.
+    const saved = await api.get<{ id: string }>(`/api/projects`, {
+      method: 'POST',
+      body: JSON.stringify({
+        id: slug,
+        name: newProj.name || 'New Service',
+        description: newProj.description || '',
+        enabled: true,
+        location: newProj.location,
+        runtime: newProj.runtime,
+        monitoring: { intervalSeconds: 60, timeoutSeconds: 10, expectedStatus: [200] },
+      }),
+    });
+    if (!saved) return false;
     const created: Project = {
       id: slug,
       name: newProj.name || 'New Service',
-      description: newProj.description || 'Custom monitored service',
+      description: newProj.description || '',
       enabled: true,
-      status: 'UP',
-      tags: newProj.tags || ['custom', 'v1'],
-      location: newProj.location || {
-        type: 'local',
-        agentId: 'local',
-        cwd: `/root/Software_projects/${slug}`,
-      },
-      runtime: newProj.runtime || {
-        healthUrl: 'http://localhost:3000/health',
-        port: 3000,
-        command: 'npm',
-        args: ['start'],
-      },
+      status: 'STARTING',
+      tags: newProj.tags || [],
+      location: newProj.location || { type: 'local', agentId: 'local' },
+      runtime: newProj.runtime || { healthUrl: 'http://localhost:3000/health' },
       monitoring: {
-        intervalSeconds: 30,
+        intervalSeconds: 60,
         timeoutSeconds: 10,
         expectedStatus: [200],
       },
-      process: {
-        alive: true,
-        cpuPct: 5.2,
-        memMB: 120.0,
-        uptimeSec: 100,
-        restarts: 0,
-      },
-      history: [
-        { ts: '10:00', code: 200, latencyMs: 18.0 },
-        { ts: '10:15', code: 200, latencyMs: 16.5 },
-        { ts: '10:30', code: 200, latencyMs: 19.2 },
-      ],
+      history: [],
       uptime24h: 100,
       uptime7d: 100,
       uptime30d: 100,
-      currentLatency: 17.5,
-      lastChecked: 'Just now',
+      currentLatency: 0,
+      lastChecked: 'just now',
     };
 
-    setProjects((prev) => [created, ...prev]);
-    appendLog(created.id, `[INFO] Registered project ${created.id} into projects.json`);
-    addAuditEntry('bearer_token:admin_ops', created.id, 'process_start', `Registered new project ${created.id}`);
+    setProjects((prev) => (prev.some((p) => p.id === created.id) ? prev : [created, ...prev]));
+    setActiveProjectId(created.id);
+    appendLog(created.id, `[INFO] Saved ${created.id} — first check running`);
+    addAuditEntry('bearer_token:admin_ops', created.id, 'process_start', `Added ${isExternal ? 'watched link' : 'local service'} ${created.id}`);
+    return true;
   };
 
   return (
@@ -973,9 +993,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsReadOnlyMode,
         authToken,
         authed,
+        authChecked,
         login,
         logout,
-        enterDemo,
         rotateAuthToken,
         startProject,
         stopProject,
@@ -989,6 +1009,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         acknowledgeIncident,
         resolveIncident,
         addNewProject,
+        addServiceSignal,
+        openAddService,
         playHapticAudio,
         lastSyncTime,
       }}

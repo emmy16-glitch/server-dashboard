@@ -5,7 +5,13 @@ const fs = require("fs");
 const path = require("path");
 
 const LOCKDIR = path.join(__dirname, "..", "locks");
-const ALLOWED_ROOTS = ["/root/projects", "/root/Software_projects", "/root/models", "/root/server-dashboard"];
+// Portable roots: DASHBOARD_ROOTS="C:\apps;/data/apps" (or ":/..." on unix)
+// plus legacy Termux defaults plus cwd + home so any box works out of the box.
+const ALLOWED_ROOTS = (() => {
+  const extra = (process.env.DASHBOARD_ROOTS || "").split(/[;,]/).map((s) => s.trim()).filter(Boolean);
+  const home = (() => { try { return require("os").homedir(); } catch { return null; } })();
+  return [...extra, "/root/projects", "/root/Software_projects", "/root/models", "/root/server-dashboard", process.cwd(), home].filter(Boolean);
+})();
 
 function realInside(p, roots = ALLOWED_ROOTS) {
   try {
